@@ -107,5 +107,22 @@ td{padding:6px 8px;border-bottom:1px solid var(--ln);vertical-align:middle}
 /* Texto que queda directamente sobre el fondo (#917A79): más oscuro para que se lea bien */
 .filtros,.filtros label,.filtros .chk{color:var(--tx2)}
 main>p,main>small,main>.mu{color:var(--tx2)}
-.demo{background:#F9F1E6;color:#3F210E;border-bottom:3px solid #6A6141;padding:8px 16px;text-align:center;font-size:14px}
-.demo[hidden]{display:none}
+/* Sprint 9 (legibilidad): todo texto de apoyo que queda sobre el fondo #917A79 va en el marrón más oscuro; dentro de tarjetas (fondo claro) conserva su tono suave */
+main .mu,main small,main h3,main dt{color:var(--tx2)}
+.card .mu,.card small,.ok .mu,.ok small,.item small,.oc small,.aviso .mu,.aviso small,.tot-box small,.tw small,.tw .mu,.ficha dt,.ficha-dl dt,.opt small{color:var(--mu)}
+.card h3,.ok h3{color:var(--tx)}
+.mini,.btn.s{color:var(--tx2)}.btn.s{border-color:var(--tx2)}.mini{border-color:var(--tx2)}
+.col .mu,.kb>.mu,.col small{color:var(--tx2)}.col .oc small,.col .oc .mu{color:var(--mu)}
+.errbox,.alerta{color:#8C1D18}
+
+/* Sprint 9: dirección de entrega */
+.dir-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;align-items:start}
+.dir-grid .wide{grid-column:1 / -1}
+.dir-grid label[hidden]{display:none}
+.dir-info{align-self:center;min-height:20px}.dir-info small{color:var(--mu)}
+.dir-grid input,.dir-grid select{width:100%}
+@media(max-width:560px){.dir-grid{grid-template-columns:1fr}}
+.oc .dir{font-size:13px;color:var(--mu)}
+/* Mensajes de error y de éxito: llevan su propio fondo claro, así se leen sobre cualquier superficie */
+.err:not(:empty){background:var(--errbg);border:1px solid var(--err);border-radius:6px;padding:6px 10px;color:#8C1D18}
+.okmsg:not(:empty){background:var(--card);border:1px solid var(--ok);border-radius:6px;padding:6px 10px;color:var(--ok)}

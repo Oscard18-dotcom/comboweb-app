@@ -36,7 +36,8 @@ Personal.registrar('tab', 'Tablero de pedidos', ['cocina', 'admin'], 2, (cont, H
     const abrir = () => { sel = p.id; pintar(); };
     return e('div', { class: 'oc' + (sel === p.id ? ' on' : '') + (p.atrasado ? ' atr' : ''), role: 'button', tabindex: '0', 'aria-label': `Pedido ${p.folio}`, onclick: abrir, onkeydown: (ev) => { if (ev.key === 'Enter') abrir(); } },
       e('b', {}, p.folio), e('small', { class: 'mu' }, (p.atrasado ? `⚠ Atrasado (${fd(p.fecha)}) · ` : '') + `${p.hora} h · ${p.cliente}`),
-      e('span', {}, p.items.map((i) => `${i.nombre} x${i.cantidad}`).join(', ')), p.dedicatoria ? e('span', { class: 'ded' }, '🎂 ' + p.dedicatoria) : null,
+      e('span', {}, p.items.map((i) => `${i.nombre} x${i.cantidad}`).join(', ')),
+      e('span', { class: 'dir' }, p.direccion ? `📍 ${p.direccion.calle} ${p.direccion.num_ext}, Col. ${p.direccion.colonia}` : '📍 Sin dirección registrada'), p.dedicatoria ? e('span', { class: 'ded' }, '🎂 ' + p.dedicatoria) : null,
       accion ? e('button', { class: 'btn', type: 'button', onclick: (ev) => { ev.stopPropagation(); avanzar(p, siguiente, ev.currentTarget); } }, accion) : null);
   }
   function pintar() {
@@ -47,7 +48,10 @@ Personal.registrar('tab', 'Tablero de pedidos', ['cocina', 'admin'], 2, (cont, H
     if (!datos.pedidos.length) tablero.append(e('p', { class: 'mu' }, 'No hay pedidos para este día.'));
     const p = datos.pedidos.find((x) => x.id === sel);
     ficha.replaceChildren(...(p ? [e('div', { class: 'card' }, e('h3', {}, `Ficha técnica · ${p.folio}`), chipC(p.estatus, (COLS.find((c) => c[0] === p.estatus) || [])[1] || '#7D756B'),
-      e('dl', {}, e('dt', {}, 'Cliente'), e('dd', {}, p.cliente), e('dt', {}, 'Entrega'), e('dd', {}, `${fd(p.fecha)} a las ${p.hora} h`), e('dt', {}, 'Presentación'), e('dd', {}, p.presentacion),
+      e('dl', {}, e('dt', {}, 'Cliente'), e('dd', {}, p.cliente), e('dt', {}, 'Entrega'), e('dd', {}, `${fd(p.fecha)} a las ${p.hora} h`),
+        e('dt', {}, 'Dirección'), e('dd', {}, p.direccion ? [`${p.direccion.calle} ${p.direccion.num_ext}${p.direccion.num_int ? ' int. ' + p.direccion.num_int : ''}`, e('br'), `Col. ${p.direccion.colonia}`, e('br'), `C.P. ${p.direccion.cp} · ${p.direccion.municipio}${p.direccion.estado ? ', ' + p.direccion.estado : ''}`] : 'Sin dirección registrada (pedido anterior)'),
+        p.direccion && p.direccion.referencias ? [e('dt', {}, 'Referencias'), e('dd', {}, p.direccion.referencias)] : null,
+        e('dt', {}, 'Presentación'), e('dd', {}, p.presentacion),
         e('dt', {}, 'Combo'), e('dd', {}, p.items.map((i) => `${i.nombre} x${i.cantidad}`).join(', '))),
       p.dedicatoria ? e('span', { class: 'ded' }, '🎂 Dedicatoria: ' + p.dedicatoria) : e('p', { class: 'mu' }, 'Sin dedicatoria.'),
       e('h3', { style: 'margin-top:10px' }, 'Ingredientes'),

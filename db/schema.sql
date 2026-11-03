@@ -217,3 +217,13 @@ DO $$ BEGIN
   ALTER TABLE notificaciones ADD CONSTRAINT notificaciones_destino_ck
     CHECK ((pedido_id IS NOT NULL AND pedido_proveedor_id IS NULL) OR (pedido_id IS NULL AND pedido_proveedor_id IS NOT NULL));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Sprint 9: dirección de entrega del pedido (los pedidos anteriores quedan sin dirección)
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_cp          VARCHAR(5);
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_colonia     VARCHAR(80);
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_calle       VARCHAR(100);
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_num_ext     VARCHAR(20);
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_num_int     VARCHAR(20);
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_municipio   VARCHAR(80);
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_estado      VARCHAR(40);
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_referencias VARCHAR(200);

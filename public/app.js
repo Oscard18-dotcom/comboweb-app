@@ -47,9 +47,13 @@ function setSession(t, u) {
 }
 
 /* ---------- Combo en construcción ---------- */
-const nuevoCombo = () => ({ q: {}, pres: null, ded: false, text: '', fecha: '', hora: '' });
+const nuevoDir = () => ({ cp: '', colonia: '', calle: '', ext: '', int: '', ref: '', municipio: '', colonias: [], manual: false, estadoCP: '' });
+const nuevoCombo = () => ({ q: {}, pres: null, ded: false, text: '', fecha: '', hora: '', dir: nuevoDir() });
 let d = nuevoCombo();
-const cuerpo = () => ({ items: Object.entries(d.q).map(([id, c]) => ({ producto_id: Number(id), cantidad: c })), presentacion_id: d.pres, fecha: d.fecha, hora: d.hora, dedicatoria: d.ded ? d.text : '' });
+const cuerpo = () => ({ items: Object.entries(d.q).map(([id, c]) => ({ producto_id: Number(id), cantidad: c })), presentacion_id: d.pres, fecha: d.fecha, hora: d.hora, dedicatoria: d.ded ? d.text : '',
+  direccion: { cp: d.dir.cp, colonia: d.dir.colonia, calle: d.dir.calle, num_ext: d.dir.ext, num_int: d.dir.int, referencias: d.dir.ref, ...(d.dir.manual ? { municipio: d.dir.municipio } : {}) } });
+const dirCompleta = () => { const x = d.dir; return /^\d{5}$/.test(x.cp) && !!x.colonia.trim() && x.calle.trim().length >= 2 && !!x.ext.trim() && (!x.manual || !!x.municipio.trim()) && (x.manual || x.colonias.length > 0); };
+const textoDir = (x) => x ? `${x.calle} ${x.num_ext}${x.num_int ? ' int. ' + x.num_int : ''}, Col. ${x.colonia}, C.P. ${x.cp}, ${x.municipio}${x.estado ? ', ' + x.estado : ''}` : null;
 const manana = () => { const x = new Date(); x.setDate(x.getDate() + 1); return [x.getFullYear(), String(x.getMonth() + 1).padStart(2, '0'), String(x.getDate()).padStart(2, '0')].join('-'); };
 
 function buildArmar() {
@@ -70,8 +74,9 @@ function buildArmar() {
     } else resumen.append(el('p', { class: 'mu' }, 'Elige tus productos para ver el total.'));
     const msgs = ((qt && qt.errores) || []).filter((e) => !(e.codigo === 'sin_productos' || (e.codigo === 'fecha_invalida' && !d.fecha) || (e.codigo === 'hora_invalida' && !d.hora))).map((e) => e.mensaje);
     if (d.ded && !d.text.trim()) msgs.push('Escribe tu dedicatoria o elige “No”.');
+    if (qt && qt.ok && !dirCompleta()) msgs.push('Completa tu dirección de entrega (código postal, colonia, calle y número exterior).');
     errores.replaceChildren(...msgs.map((m) => el('div', {}, m)));
-    pagar.disabled = !(qt && qt.ok) || (d.ded && !d.text.trim());
+    pagar.disabled = !(qt && qt.ok) || (d.ded && !d.text.trim()) || !dirCompleta();
     resumen.append(pagar);
   };
   const cotizar = () => {
@@ -123,6 +128,49 @@ function buildArmar() {
   const fecha = el('input', { type: 'date', min: manana(), 'aria-label': 'Fecha de entrega', onchange: async (ev) => { d.fecha = ev.target.value; await cargaHoras(); cotizar(); } });
   fecha.value = d.fecha;
 
+  /* ---------- Dirección de entrega: al escribir el código postal se llenan las colonias ---------- */
+  const D = d.dir;
+  let seqCP = 0;
+  const campo = (rotulo, input, cls = '') => el('label', { class: cls }, rotulo, input);
+  const inCP = el('input', { name: 'cp', inputmode: 'numeric', maxlength: 5, autocomplete: 'postal-code', placeholder: '91000', 'aria-label': 'Código postal' });
+  const selCol = el('select', { 'aria-label': 'Colonia', onchange: (ev) => { D.colonia = ev.target.value; cotizar(); } });
+  const inColM = el('input', { maxlength: 80, autocomplete: 'address-level3', 'aria-label': 'Colonia (escríbela)', oninput: (ev) => { D.colonia = ev.target.value; cotizar(); } });
+  const inMun = el('input', { maxlength: 80, autocomplete: 'address-level2', 'aria-label': 'Municipio o ciudad', oninput: (ev) => { D.municipio = ev.target.value; cotizar(); } });
+  const inCalle = el('input', { maxlength: 100, autocomplete: 'address-line1', 'aria-label': 'Calle', oninput: (ev) => { D.calle = ev.target.value; cotizar(); } });
+  const inExt = el('input', { maxlength: 20, 'aria-label': 'Número exterior', placeholder: 'Ej. 12 o S/N', oninput: (ev) => { D.ext = ev.target.value; cotizar(); } });
+  const inInt = el('input', { maxlength: 20, 'aria-label': 'Número interior (opcional)', oninput: (ev) => { D.int = ev.target.value; cotizar(); } });
+  const inRef = el('input', { maxlength: 200, 'aria-label': 'Referencias (opcional)', placeholder: 'Ej. portón negro, frente al parque', oninput: (ev) => { D.ref = ev.target.value; cotizar(); } });
+  const infoCP = el('small', { class: 'cpinfo', role: 'status' });
+  const lColonia = campo('Colonia', selCol), lColM = campo('Colonia', inColM), lMun = campo('Municipio o ciudad', inMun);
+  const pintarCP = () => {
+    selCol.replaceChildren(el('option', { value: '' }, D.colonias.length ? 'Elige tu colonia' : 'Primero escribe el código postal'), ...D.colonias.map((c) => el('option', { value: c }, c)));
+    selCol.value = D.colonias.includes(D.colonia) ? D.colonia : ''; if (selCol.value === '') D.colonia = D.manual ? D.colonia : '';
+    selCol.disabled = !D.colonias.length;
+    lColonia.hidden = D.manual; lColM.hidden = !D.manual; lMun.hidden = !D.manual;
+    infoCP.textContent = D.estadoCP;
+  };
+  const buscarCP = async () => {
+    const cp = D.cp, mi = ++seqCP;
+    if (!/^\d{5}$/.test(cp)) { D.colonias = []; D.manual = false; D.estadoCP = ''; if (!D.manual) D.colonia = ''; pintarCP(); cotizar(); return; }
+    D.estadoCP = 'Buscando colonias…'; pintarCP();
+    try {
+      const { codigo_postal: r } = await api('/catalogo/codigo-postal/' + cp);
+      if (mi !== seqCP) return;
+      if (r) {
+        D.manual = false; D.colonias = r.colonias; D.municipio = r.municipio;
+        if (!r.colonias.includes(D.colonia)) D.colonia = r.colonias.length === 1 ? r.colonias[0] : '';
+        D.estadoCP = `${r.municipio}, ${r.estado} · ${r.colonias.length === 1 ? 'colonia llenada automáticamente' : r.colonias.length + ' colonias, elige la tuya'}`;
+      } else { D.manual = true; D.colonias = []; D.estadoCP = 'No encontramos ese código postal en nuestro catálogo: escribe tu colonia y municipio.'; inColM.value = D.colonia; inMun.value = D.municipio; }
+    } catch (e) { if (mi !== seqCP) return; D.colonias = []; D.estadoCP = e.message; }
+    pintarCP(); selCol.value = D.colonia; cotizar();
+  };
+  inCP.addEventListener('input', () => { const v = inCP.value.replace(/\D/g, '').slice(0, 5); if (v !== inCP.value) inCP.value = v; D.cp = v; buscarCP(); });
+  inCP.value = D.cp; inColM.value = D.manual ? D.colonia : ''; inMun.value = D.manual ? D.municipio : ''; inCalle.value = D.calle; inExt.value = D.ext; inInt.value = D.int; inRef.value = D.ref;
+  pintarCP(); if (/^\d{5}$/.test(D.cp) && !D.colonias.length && !D.manual) buscarCP();
+  const dirBox = el('div', { class: 'dir-grid' },
+    campo('Código postal', inCP), el('div', { class: 'dir-info' }, infoCP), lColonia, lColM, lMun,
+    campo('Calle', inCalle, 'wide'), campo('Número exterior', inExt), campo('Número interior (opcional)', inInt), campo('Referencias (opcional)', inRef, 'wide'));
+
   pagar.onclick = async () => {
     pagar.disabled = true;
     try { const r = await api('/pedidos/checkout', { method: 'POST', body: cuerpo() }); location.assign(r.url); }
@@ -132,7 +180,8 @@ function buildArmar() {
   root.append(el('div', { class: 'two' },
     el('section', { class: 'card' }, el('h2', {}, '1. Elige tus productos'), prods, el('h2', {}, '2. Presentación'), pres,
       el('h2', {}, '3. ¿Llevará dedicatoria?'), el('div', { class: 'seg' }, bSi, bNo), dedBox,
-      el('h2', {}, '4. Fecha y hora de entrega'), el('div', { class: 'seg' }, fecha, hora), errores),
+      el('h2', {}, '4. Fecha y hora de entrega'), el('div', { class: 'seg' }, fecha, hora),
+      el('h2', {}, '5. Dirección de entrega'), dirBox, errores),
     resumen));
   pintar(null); cargaHoras(); if (Object.keys(d.q).length) cotizar();
 }
@@ -155,6 +204,7 @@ function comprobante(p) {
     ln(p.presentacion.nombre, money(p.presentacion.precio)), ln('Total pagado', money(p.total), 'tot'),
     p.historial ? [el('h3', {}, 'Seguimiento'), linea(p.estatus, p.historial)] : null,
     el('p', {}, `Cliente: ${p.cliente.nombre}`, el('br'), `Entrega: ${p.entrega.fecha} a las ${p.entrega.hora} h`,
+      p.entrega.direccion ? [el('br'), `Dirección: ${p.entrega.direccion.texto}`, p.entrega.direccion.referencias ? [el('br'), `Referencias: ${p.entrega.direccion.referencias}`] : null] : null,
       p.dedicatoria ? [el('br'), `Dedicatoria: “${p.dedicatoria}”`] : null, el('br'), `Pago: ${p.pago ? p.pago.estado + ' (' + p.pago.proveedor + ')' : '—'}`),
     el('div', { class: 'row noprint' }, el('button', { class: 'btn', type: 'button', onclick: () => window.print() }, 'Imprimir comprobante'),
       el('button', { class: 'btn s', type: 'button', onclick: () => { $('#msg').hidden = true; d = nuevoCombo(); tab = 'armar'; paint(); } }, 'Armar otro combo')));
@@ -192,7 +242,7 @@ async function cargarMis(silencioso = false) {
       ...(pedidos.length ? pedidos.map((p) => el('div', { class: 'card' },
         el('b', {}, p.folio + ' '), chip(p.estatus),
         el('p', {}, (p.items || []).map((i) => `${i.nombre} x${i.cantidad}`).join(', '), ` · ${p.presentacion}`, p.dedicatoria ? [el('br'), `Dedicatoria: “${p.dedicatoria}”`] : null,
-          el('br'), `Entrega: ${p.fecha} ${p.hora} h · ${money(p.total)}`),
+          el('br'), `Entrega: ${p.fecha} ${p.hora} h · ${money(p.total)}`, p.direccion ? [el('br'), `Dirección: ${p.direccion.texto}`] : null),
         linea(p.estatus, p.historial),
         el('button', { class: 'btn s', type: 'button', style: 'width:auto', onclick: () => verComprobante(p.id) }, 'Ver comprobante'))) : [el('p', { class: 'mu' }, 'Aún no tienes pedidos.')]));
   } catch (e) { if (!silencioso) root.replaceChildren(el('p', { class: 'err' }, e.message)); }
@@ -266,8 +316,6 @@ $('#btn-cuenta').onclick = abrirCuenta;
 $('#out').onclick = () => { d = nuevoCombo(); setSession(null, null); };
 document.querySelectorAll('#nav button').forEach((b) => { b.onclick = () => { tab = b.dataset.tab; $('#msg').hidden = true; paint(); }; });
 
-// Aviso permanente cuando el sitio es una demostración pública (pago simulado)
-fetch('/api/salud').then((r) => r.json()).then((j) => { if (j && j.modo_demo) $('#demo').hidden = false; }).catch(() => {});
 (async () => {
   try { cat = await api('/catalogo'); } catch (e) { $('#err').textContent = e.message; }
   paint();

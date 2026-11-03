@@ -1,7 +1,7 @@
 {
   "name": "comboweb-app",
-  "version": "0.8.0",
-  "description": "ComboWeb App - EN COMBO (Sprint 8: publicación en línea y ajustes de administración)",
+  "version": "0.9.0",
+  "description": "ComboWeb App - EN COMBO (Sprint 9: dirección de entrega y legibilidad)",
   "main": "src/server.js",
   "engines": {
     "node": ">=18"
@@ -23,7 +23,8 @@
     "respaldo": "node scripts/respaldo.js",
     "test:sprint7": "node scripts/test-sprint7.js",
     "start:nube": "node scripts/preparar-nube.js && node src/server.js",
-    "test:sprint8": "node scripts/test-sprint8.js"
+    "test:sprint8": "node scripts/test-sprint8.js",
+    "test:sprint9": "node scripts/test-sprint9.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

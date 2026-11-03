@@ -1,5 +1,6 @@
 const db = require('../db');
 const mail = require('../mail');
+const direccion = require('./direccion');
 
 const MAX_INTENTOS = 5;
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,8 +20,9 @@ const TEXTOS = {
 };
 function redactar(tipo, p) {
   const f = folio(p.id), [asunto, linea] = TEXTOS[tipo](f);
-  const texto = `Hola ${p.nombre},\n\n${linea}\n\nPedido: ${f}\nEntrega: ${p.fecha} a las ${p.hora} h\n\nPuedes ver el estado de tu pedido en ${base()}\n\nEN COMBO`;
-  const html = `<p>Hola ${esc(p.nombre)},</p><p>${esc(linea)}</p><p><b>Pedido:</b> ${f}<br><b>Entrega:</b> ${esc(p.fecha)} a las ${esc(p.hora)} h</p>`
+  const dir = direccion.texto(direccion.desdeFila(p));
+  const texto = `Hola ${p.nombre},\n\n${linea}\n\nPedido: ${f}\nEntrega: ${p.fecha} a las ${p.hora} h${dir ? '\nDirección: ' + dir : ''}\n\nPuedes ver el estado de tu pedido en ${base()}\n\nEN COMBO`;
+  const html = `<p>Hola ${esc(p.nombre)},</p><p>${esc(linea)}</p><p><b>Pedido:</b> ${f}<br><b>Entrega:</b> ${esc(p.fecha)} a las ${esc(p.hora)} h${dir ? '<br><b>Dirección:</b> ' + esc(dir) : ''}</p>`
     + `<p><a href="${esc(base())}">Ver el estado de mi pedido</a></p><p>EN COMBO</p>`;
   return { asunto, texto, html };
 }
@@ -28,7 +30,7 @@ function redactar(tipo, p) {
 // Se llama DENTRO de la transacción del cambio de estatus (q = la conexión de esa transacción)
 async function encolar(q, pedidoId, tipo) {
   const { rows } = await q.query(
-    `SELECT p.id,p.cliente_id,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,u.nombre,u.correo
+    `SELECT p.id,p.cliente_id,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,u.nombre,u.correo,${direccion.COLS}
        FROM pedidos p JOIN usuarios u ON u.id=p.cliente_id WHERE p.id=$1`, [pedidoId]);
   if (!rows[0]) return;
   const m = redactar(tipo, rows[0]);

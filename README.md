@@ -177,8 +177,15 @@ Nuevo menú **Pedidos a proveedor** (solo administrador) con tres pestañas:
 - **Recetas y costeo:** el botón "Eliminar receta" se reemplazó por **"Eliminar producto"** (borra el producto y su receta; si ya tiene ventas se desactiva para conservar el historial). Se mantiene "Desactivar producto". Ruta nueva: `DELETE /api/admin/productos/:id`.
 - **Color de fondo** `#917A79` (siempre claro, sin modo oscuro automático).
 
+## Sprint 9: dirección de entrega y legibilidad
+- **Dirección de entrega:** después de la fecha y hora, el cliente escribe código postal, colonia, calle, número exterior, número interior (opcional) y referencias (opcional). Al escribir el código postal se llenan las colonias y el municipio con el catálogo oficial de SEPOMEX para Veracruz (`src/data/cp-veracruz.json`, 2 349 códigos; si el código tiene una sola colonia se elige sola). Si el código no está en el catálogo se escriben colonia y municipio a mano. El servidor valida todo (la colonia debe pertenecer al código postal) y calcula el municipio; la dirección no se exige al cotizar, solo al pagar.
+- **Se muestra en:** comprobante y “Mis pedidos” del cliente, tablero y ficha técnica de cocina y administración (con referencias), y en el correo de confirmación. Los pedidos anteriores (sin dirección) siguen funcionando.
+- Ruta nueva pública: `GET /api/catalogo/codigo-postal/:cp`. Columnas nuevas `dir_*` en `pedidos` (se agregan solas con `db/schema.sql`).
+- **Legibilidad:** el texto de apoyo, títulos y botones que quedan directamente sobre el fondo `#917A79` usan un marrón más oscuro; los mensajes de error y éxito llevan su propio fondo claro. Se revisó el contraste de todas las pantallas con un navegador real.
+- Se retiró el cartel “Sitio de demostración” (el modo de pruebas sigue funcionando igual: pago y correo simulados).
+
 ## Probar que todo funciona
-**Total verificado con esta versión: 669 pruebas (33 + 70 + 92 + 96 + 83 + 125 + 58 + 112), todas correctas.** El Sprint 8 se prueba con `npm run test:sprint8` (58) y la interfaz con `npm run test:ui` (112).
+**Total verificado con esta versión: 724 pruebas (33 + 70 + 92 + 96 + 84 + 125 + 58 + 51 + 115), todas correctas.** El Sprint 9 se prueba con `npm run test:sprint9` (51). El Sprint 8 se prueba con `npm run test:sprint8` (58) y la interfaz con `npm run test:ui` (112).
 
 - **Sprint 2:** con el servidor corriendo, `SEED_PASSWORD=tu_clave BASE_URL=http://localhost:3000 npm run test:smoke` (33 pruebas: registro, login, roles, catálogo, administración y ataques básicos).
 - **Sprint 3:** primero `npm run db:init` (agrega las tablas nuevas) y luego `npm run test:sprint3` (70 pruebas: validaciones, flujo de pago, webhook con firma y pagos simultáneos). No necesita el servidor encendido.

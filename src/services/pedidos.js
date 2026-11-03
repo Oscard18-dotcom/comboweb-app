@@ -1,5 +1,6 @@
 const db = require('../db');
 const notif = require('./notificaciones');
+const direccion = require('./direccion');
 
 const HORAS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
 const CAPACIDAD = () => Number(process.env.SLOT_CAPACITY || 2); // pedidos máximos por horario
@@ -125,10 +126,11 @@ async function validar(q, b = {}) {
 /* ---------- Checkout: guarda el combo y devuelve el enlace de pago (paso 12) ---------- */
 async function crearCheckout(user, body, proveedor) {
   const v = await validar(db, body);
-  if (v.errores.length) return { errores: v.errores };
+  const dv = direccion.validar((body || {}).direccion);   // la dirección solo se exige al pagar, no al cotizar
+  if (v.errores.length || dv.errores.length) return { errores: [...v.errores, ...dv.errores] };
   const d = v.detalle;
   const payload = { items: d.lineas.map((l) => ({ producto_id: l.producto_id, cantidad: l.cantidad })), lineas: d.lineas,
-    presentacion_id: d.presentacion.id, presentacion: d.presentacion, fecha: d.fecha, hora: d.hora, dedicatoria: d.dedicatoria };
+    presentacion_id: d.presentacion.id, presentacion: d.presentacion, fecha: d.fecha, hora: d.hora, dedicatoria: d.dedicatoria, direccion: dv.dir };
   const { rows } = await db.query(
     "INSERT INTO checkouts(cliente_id,payload,total,proveedor,expira_en) VALUES($1,$2,$3,$4, now() + interval '35 minutes') RETURNING id",
     [user.id, JSON.stringify(payload), d.total, proveedor.nombre]);
@@ -161,6 +163,7 @@ async function confirmarPago(checkoutId, { proveedor, referencia, monto, moneda 
     if (String(moneda).toLowerCase() !== 'mxn' || cents(monto) !== cents(ck.total)) return aRevision('monto_o_moneda');
 
     const p = ck.payload;
+    const dir = p.direccion || {};
     // Bloqueos para que dos pagos simultáneos no usen el mismo stock ni el mismo horario
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`slot ${p.fecha} ${p.hora}`]);
     const items = new Map(p.items.map((i) => [i.producto_id, i.cantidad]));
@@ -170,8 +173,11 @@ async function confirmarPago(checkoutId, { proveedor, referencia, monto, moneda 
     if (faltas.length) return aRevision(faltas[0].codigo);
 
     const pedido = (await c.query(
-      "INSERT INTO pedidos(cliente_id,presentacion_id,fecha_entrega,hora_entrega,dedicatoria,total,estatus) VALUES($1,$2,$3,$4,$5,$6,'Pendiente') RETURNING id",
-      [ck.cliente_id, p.presentacion_id, p.fecha, p.hora, p.dedicatoria, ck.total])).rows[0];
+      `INSERT INTO pedidos(cliente_id,presentacion_id,fecha_entrega,hora_entrega,dedicatoria,total,estatus,
+                           dir_cp,dir_colonia,dir_calle,dir_num_ext,dir_num_int,dir_municipio,dir_estado,dir_referencias)
+       VALUES($1,$2,$3,$4,$5,$6,'Pendiente',$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+      [ck.cliente_id, p.presentacion_id, p.fecha, p.hora, p.dedicatoria, ck.total,
+        dir.cp || null, dir.colonia || null, dir.calle || null, dir.num_ext || null, dir.num_int || null, dir.municipio || null, dir.estado || null, dir.referencias || null])).rows[0];
     for (const l of p.lineas)
       await c.query('INSERT INTO pedido_items(pedido_id,producto_id,cantidad,precio_unitario) VALUES($1,$2,$3,$4)', [pedido.id, l.producto_id, l.cantidad, l.precio_unitario]);
     for (const [insumoId, cant] of reqs) {
@@ -198,7 +204,7 @@ const folio = (id) => 'EC-' + String(id).padStart(4, '0');
 async function detallePedido(id) {
   const p = (await db.query(
     `SELECT p.id,p.cliente_id,p.estatus,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,p.dedicatoria,p.total,p.creado_en,
-            pr.nombre AS presentacion, u.nombre AS cliente, u.correo
+            pr.nombre AS presentacion, u.nombre AS cliente, u.correo, ${direccion.COLS}
        FROM pedidos p JOIN presentaciones pr ON pr.id=p.presentacion_id JOIN usuarios u ON u.id=p.cliente_id WHERE p.id=$1`, [id])).rows[0];
   if (!p) return null;
   const items = (await db.query(
@@ -208,18 +214,22 @@ async function detallePedido(id) {
   const historial = (await db.query('SELECT estatus,creado_en FROM pedido_estatus_historial WHERE pedido_id=$1 ORDER BY id', [id])).rows;
   const sumaItems = items.reduce((a, i) => a + cents(i.subtotal), 0);
   return { id: p.id, cliente_id: p.cliente_id, folio: folio(p.id), estatus: p.estatus, cliente: { nombre: p.cliente, correo: p.correo },
-    entrega: { fecha: p.fecha, hora: p.hora }, dedicatoria: p.dedicatoria,
+    entrega: { fecha: p.fecha, hora: p.hora, direccion: direccion.desdeFila(p) }, dedicatoria: p.dedicatoria,
     presentacion: { nombre: p.presentacion, precio: (cents(p.total) - sumaItems) / 100 }, items, total: Number(p.total), pago, historial, creado_en: p.creado_en };
 }
 async function pedidosDe(clienteId) {
   const { rows } = await db.query(
-    `SELECT p.id,p.estatus,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,p.dedicatoria,p.total,p.creado_en,pr.nombre AS presentacion,
+    `SELECT p.id,p.estatus,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,p.dedicatoria,p.total,p.creado_en,pr.nombre AS presentacion, ${direccion.COLS},
             (SELECT json_agg(json_build_object('nombre',pd.nombre,'cantidad',i.cantidad) ORDER BY pd.nombre)
                FROM pedido_items i JOIN productos pd ON pd.id=i.producto_id WHERE i.pedido_id=p.id) AS items,
             (SELECT json_agg(json_build_object('estatus',h.estatus,'creado_en',h.creado_en) ORDER BY h.id)
                FROM pedido_estatus_historial h WHERE h.pedido_id=p.id) AS historial
        FROM pedidos p JOIN presentaciones pr ON pr.id=p.presentacion_id WHERE p.cliente_id=$1 ORDER BY p.id DESC`, [clienteId]);
-  return rows.map((r) => ({ ...r, folio: folio(r.id), total: Number(r.total) }));
+  return rows.map((r) => {
+    const o = { ...r, direccion: direccion.desdeFila(r), folio: folio(r.id), total: Number(r.total) };
+    for (const k of Object.keys(o)) if (k.startsWith('dir_')) delete o[k];   // las columnas internas no salen de la API
+    return o;
+  });
 }
 
 module.exports = { HORAS, todayMX, addDays, fechaValida, horarios, validar, crearCheckout, confirmarPago, detallePedido, pedidosDe, folio };
