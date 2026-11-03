@@ -182,10 +182,11 @@ Nuevo menú **Pedidos a proveedor** (solo administrador) con tres pestañas:
 - **Se muestra en:** comprobante y “Mis pedidos” del cliente, tablero y ficha técnica de cocina y administración (con referencias), y en el correo de confirmación. Los pedidos anteriores (sin dirección) siguen funcionando.
 - Ruta nueva pública: `GET /api/catalogo/codigo-postal/:cp`. Columnas nuevas `dir_*` en `pedidos` (se agregan solas con `db/schema.sql`).
 - **Legibilidad:** el texto de apoyo, títulos y botones que quedan directamente sobre el fondo `#917A79` usan un marrón más oscuro; los mensajes de error y éxito llevan su propio fondo claro. Se revisó el contraste de todas las pantallas con un navegador real.
+- **Notificaciones del cliente:** pestaña nueva con globo de “sin leer”. Llega un aviso al confirmarse el pedido y otro en cada cambio de estatus (en preparación, listo, entregado), aunque el correo no esté configurado. Se puede marcar como leída, marcar todas, o abrir el pedido. Rutas: `/api/avisos` (solo cliente). Reutiliza los avisos del correo; columna nueva `leida_en` en `notificaciones`.
 - Se retiró el cartel “Sitio de demostración” (el modo de pruebas sigue funcionando igual: pago y correo simulados).
 
 ## Probar que todo funciona
-**Total verificado con esta versión: 724 pruebas (33 + 70 + 92 + 96 + 84 + 125 + 58 + 51 + 115), todas correctas.** El Sprint 9 se prueba con `npm run test:sprint9` (51). El Sprint 8 se prueba con `npm run test:sprint8` (58) y la interfaz con `npm run test:ui` (112).
+**Total verificado con esta versión: 749 pruebas (33 + 70 + 92 + 96 + 84 + 125 + 58 + 72 + 119), todas correctas.** El Sprint 9 se prueba con `npm run test:sprint9` (72). El Sprint 8 se prueba con `npm run test:sprint8` (58) y la interfaz con `npm run test:ui` (112).
 
 - **Sprint 2:** con el servidor corriendo, `SEED_PASSWORD=tu_clave BASE_URL=http://localhost:3000 npm run test:smoke` (33 pruebas: registro, login, roles, catálogo, administración y ataques básicos).
 - **Sprint 3:** primero `npm run db:init` (agrega las tablas nuevas) y luego `npm run test:sprint3` (70 pruebas: validaciones, flujo de pago, webhook con firma y pagos simultáneos). No necesita el servidor encendido.

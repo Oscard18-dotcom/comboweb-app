@@ -112,4 +112,7 @@ async function encolarProveedor(q, pedidoId, tipo, responderA) {
     [pedidoId, tipo, p.correo, asunto, texto, html, responderA || null]);
 }
 
-module.exports = { encolar, encolarProveedor, enviarPendientes, disparar, iniciarTrabajo, MAX_INTENTOS, folio, folioPP };
+// Texto corto para la bandeja del cliente dentro de la página (el mismo mensaje del correo)
+const mensajeAviso = (plantilla, f) => (TEXTOS[plantilla] ? TEXTOS[plantilla](f)[1] : null);
+
+module.exports = { mensajeAviso, encolar, encolarProveedor, enviarPendientes, disparar, iniciarTrabajo, MAX_INTENTOS, folio, folioPP };

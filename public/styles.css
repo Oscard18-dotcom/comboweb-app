@@ -126,3 +126,8 @@ main .mu,main small,main h3,main dt{color:var(--tx2)}
 /* Mensajes de error y de éxito: llevan su propio fondo claro, así se leen sobre cualquier superficie */
 .err:not(:empty){background:var(--errbg);border:1px solid var(--err);border-radius:6px;padding:6px 10px;color:#8C1D18}
 .okmsg:not(:empty){background:var(--card);border:1px solid var(--ok);border-radius:6px;padding:6px 10px;color:var(--ok)}
+
+/* Notificaciones del cliente */
+.badge{display:inline-block;min-width:18px;padding:0 6px;margin-left:4px;border-radius:10px;background:var(--bar-hi);color:var(--bar);font-size:12px;font-weight:700;line-height:18px;text-align:center}
+.badge[hidden]{display:none}
+.aviso-n.nueva{border-left:5px solid var(--pri);background:var(--sel)}

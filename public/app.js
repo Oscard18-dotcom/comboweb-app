@@ -247,6 +247,37 @@ async function cargarMis(silencioso = false) {
         el('button', { class: 'btn s', type: 'button', style: 'width:auto', onclick: () => verComprobante(p.id) }, 'Ver comprobante'))) : [el('p', { class: 'mu' }, 'Aún no tienes pedidos.')]));
   } catch (e) { if (!silencioso) root.replaceChildren(el('p', { class: 'err' }, e.message)); }
 }
+/* ---------- Notificaciones del cliente ---------- */
+const fechaHora = (f) => new Date(f).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
+function pintarBadge(n) { const b = $('#badge'); if (!b) return; b.textContent = n > 99 ? '99+' : String(n); b.hidden = !(n > 0); b.setAttribute('aria-label', n + ' sin leer'); }
+async function cargarContador() {
+  if (!user || user.rol !== 'cliente') return;
+  try { pintarBadge((await api('/avisos/contador')).no_leidas); } catch (e) { /* sin conexión: se reintenta */ }
+}
+async function cargarAvisos(silencioso = false) {
+  const root = $('#avisos');
+  if (!silencioso) root.replaceChildren(el('p', { class: 'mu' }, 'Cargando…'));
+  try {
+    const { avisos, no_leidas } = await api('/avisos');
+    pintarBadge(no_leidas);
+    const abrir = async (a) => {
+      if (!a.leida) { try { await api(`/avisos/${a.id}/leida`, { method: 'POST' }); } catch (e) { /* ok */ } }
+      tab = 'mis'; paint(); verComprobante(a.pedido_id);
+    };
+    root.replaceChildren(el('div', { class: 'row filtros' }, el('h2', { style: 'margin:0' }, 'Notificaciones'),
+        el('button', { class: 'mini', type: 'button', disabled: no_leidas === 0, onclick: async () => { try { await api('/avisos/leer-todas', { method: 'POST' }); } catch (e) { /* ok */ } cargarAvisos(true); } }, 'Marcar todas como leídas')),
+      el('p', { class: 'mu' }, 'Aquí te avisamos cuando tu pedido se confirma y cada vez que cambia de estatus. Se actualiza solo.'),
+      ...(avisos.length ? avisos.map((a) => el('div', { class: 'card aviso-n' + (a.leida ? '' : ' nueva') },
+        el('div', { class: 'row', style: 'margin:0;justify-content:space-between;align-items:baseline' }, el('b', {}, (a.leida ? '' : '● ') + a.titulo), el('small', {}, fechaHora(a.creado_en))),
+        el('p', { style: 'margin:6px 0' }, a.mensaje || ''),
+        el('button', { class: 'btn s', type: 'button', style: 'width:auto', onclick: () => abrir(a) }, 'Ver pedido ' + a.folio))) : [el('p', { class: 'mu' }, 'Aún no tienes notificaciones.')]));
+  } catch (e) { if (!silencioso) root.replaceChildren(el('p', { class: 'err' }, e.message)); }
+}
+let timerAvisos = null;
+function cicloAvisos() {
+  clearInterval(timerAvisos); timerAvisos = null;
+  if (user && user.rol === 'cliente') timerAvisos = setInterval(() => { if (tab === 'avis') cargarAvisos(true); else cargarContador(); }, REFRESCO);
+}
 let timerMis = null;
 function cicloMis() {
   clearInterval(timerMis); timerMis = null;
@@ -269,7 +300,7 @@ function paint() {
   const cli = !!user && user.rol === 'cliente', staff = !!user && !cli;
   $('#who').textContent = user ? user.nombre + ' · ' + ROL[user.rol] : '';
   $('#out').hidden = !user; $('#btn-cuenta').hidden = !user; if (!user) $('#cuenta').hidden = true; $('#auth').hidden = !!user; $('#nav').hidden = !cli; $('#staff').hidden = !staff;
-  $('#armar').hidden = !(cli && tab === 'armar'); $('#mis').hidden = !(cli && tab === 'mis'); $('#catalogo').hidden = cli || staff;
+  $('#armar').hidden = !(cli && tab === 'armar'); $('#mis').hidden = !(cli && tab === 'mis'); $('#avisos').hidden = !(cli && tab === 'avis'); $('#catalogo').hidden = cli || staff;
   document.querySelectorAll('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   if (!user) $('#msg').hidden = true;
   if (cat && !cli) {
@@ -277,9 +308,9 @@ function paint() {
     cat.productos.forEach((p) => card($('#cat'), p.nombre, p.descripcion, p.precio));
     cat.presentaciones.forEach((p) => card($('#pres'), p.nombre, '', p.precio));
   }
-  if (cli) { if (tab === 'armar') buildArmar(); else cargarMis(); atenderRetorno(); }
+  if (cli) { if (tab === 'armar') buildArmar(); else if (tab === 'avis') cargarAvisos(); else cargarMis(); if (tab !== 'avis') cargarContador(); atenderRetorno(); }
   if (staff) Personal.iniciar({ api, el, money, usuario: user, descargar }); else Personal.detener();
-  cicloMis();
+  cicloMis(); cicloAvisos();
 }
 
 for (const f of [$('#f-login'), $('#f-reg')]) {

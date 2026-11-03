@@ -227,3 +227,7 @@ ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_num_int     VARCHAR(20);
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_municipio   VARCHAR(80);
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_estado      VARCHAR(40);
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_referencias VARCHAR(200);
+
+-- Sprint 9: bandeja de notificaciones del cliente (se reutilizan los avisos de pedido; solo se marca cuándo los leyó)
+ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS leida_en TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS notificaciones_cliente_idx ON notificaciones (cliente_id, creado_en DESC);

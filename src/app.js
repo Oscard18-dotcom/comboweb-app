@@ -23,6 +23,7 @@ app.use('/api/recetas', require('./routes/recetas'));
 app.use('/api/cocina', require('./routes/cocina'));
 app.use('/api/reportes', require('./routes/reportes'));
 app.use('/api/notificaciones', require('./routes/notificaciones'));
+app.use('/api/avisos', require('./routes/avisos'));
 app.use('/api/pagos', require('./routes/pagos'));
 app.use('/api/proveedores', require('./routes/proveedores'));
 app.use('/api/pedidos-proveedor', require('./routes/pedidosProveedor'));
