@@ -21,19 +21,23 @@ const REFRESCO = window.__REFRESCO_MS || 15000; // cada cuánto se actualiza "Mi
 const ln = (a, b, cls = '') => el('div', { class: 'ln ' + cls }, el('span', {}, a), el('span', {}, b));
 
 let token = null, user = null, cat = null, tab = 'armar';
-let retorno = { checkout: null, cancelado: null };
+let retorno = { checkout: null, cancelado: null }, resetToken = null;
 try {
   token = sessionStorage.getItem('t'); user = JSON.parse(sessionStorage.getItem('u') || 'null');
   const P = new URLSearchParams(location.search); retorno = { checkout: P.get('checkout'), cancelado: P.get('cancelado') };
+  // Enlace de recuperación de contraseña: se toma el código y se quita de la dirección para que no quede en el historial
+  if (/^[0-9a-f]{64}$/.test(P.get('reset') || '')) { resetToken = P.get('reset'); token = null; user = null; sessionStorage.removeItem('t'); sessionStorage.removeItem('u'); history.replaceState(null, '', location.pathname); }
 } catch (e) { /* sin almacenamiento */ }
 
 async function api(path, { method = 'GET', body } = {}) {
+  const usado = token; // la sesión con la que se hizo ESTA llamada
   const r = await fetch('/api' + path, {
-    method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+    method, headers: { 'Content-Type': 'application/json', ...(usado ? { Authorization: 'Bearer ' + usado } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const j = await r.json().catch(() => ({}));
-  if (r.status === 401 && token) { setSession(null, null); throw new Error('Tu sesión expiró. Inicia sesión de nuevo.'); }
+  // Solo se cierra la sesión si el 401 es de la sesión que sigue activa (una llamada lenta hecha con la sesión anterior no debe cerrar la nueva)
+  if (r.status === 401 && usado && usado === token) { setSession(null, null); throw new Error('Tu sesión expiró. Inicia sesión de nuevo.'); }
   if (!r.ok) throw new Error(j.error || 'Ocurrió un error.');
   return j;
 }
@@ -320,12 +324,31 @@ for (const f of [$('#f-login'), $('#f-reg')]) {
     catch (err) { $('#err').textContent = err.message; }
   });
 }
-function tabAuth(login) {
-  $('#f-login').hidden = !login; $('#f-reg').hidden = login;
-  $('#tab-login').classList.toggle('on', login); $('#tab-reg').classList.toggle('on', !login); $('#err').textContent = '';
+const VISTAS_AUTH = { login: '#f-login', reg: '#f-reg', olvide: '#f-olvide', reset: '#f-reset' };
+function vistaAuth(v, mensaje = '') {
+  for (const [k, sel] of Object.entries(VISTAS_AUTH)) $(sel).hidden = k !== v;
+  $('#tab-login').classList.toggle('on', v === 'login' || v === 'olvide' || v === 'reset'); $('#tab-reg').classList.toggle('on', v === 'reg');
+  $('#err').textContent = ''; $('#okauth').textContent = mensaje;
 }
+const tabAuth = (login) => vistaAuth(login ? 'login' : 'reg');
 $('#tab-login').onclick = () => tabAuth(true);
 $('#tab-reg').onclick = () => tabAuth(false);
+$('#ir-olvide').onclick = () => vistaAuth('olvide');
+$('#f-olvide [data-volver]').onclick = () => vistaAuth('login');
+$('#f-olvide').addEventListener('submit', async (e) => {
+  e.preventDefault(); $('#err').textContent = ''; $('#okauth').textContent = '';
+  try { const j = await api('/auth/olvide', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) }); $('#okauth').textContent = j.mensaje; e.target.reset(); }
+  catch (err) { $('#err').textContent = err.message; }
+});
+$('#f-reset').addEventListener('submit', async (e) => {
+  e.preventDefault(); $('#err').textContent = '';
+  const v = new FormData(e.target), nueva = v.get('nueva');
+  if (nueva.length < 8) { $('#err').textContent = 'La nueva contraseña debe tener al menos 8 caracteres.'; return; }
+  if (nueva !== v.get('repetir')) { $('#err').textContent = 'La nueva contraseña y su confirmación no coinciden.'; return; }
+  try { await api('/auth/restablecer', { method: 'POST', body: { token: resetToken, nueva } }); resetToken = null; e.target.reset(); vistaAuth('login', 'Contraseña actualizada. Ya puedes iniciar sesión con la nueva.'); }
+  catch (err) { $('#err').textContent = err.message; }
+});
+if (resetToken) vistaAuth('reset');
 // Mi cuenta: cambiar la propia contraseña (cierra las demás sesiones y conserva esta)
 function abrirCuenta() {
   const c = $('#cuenta');
@@ -348,6 +371,14 @@ $('#out').onclick = () => { d = nuevoCombo(); setSession(null, null); };
 document.querySelectorAll('#nav button').forEach((b) => { b.onclick = () => { tab = b.dataset.tab; $('#msg').hidden = true; paint(); }; });
 
 (async () => {
-  try { cat = await api('/catalogo'); } catch (e) { $('#err').textContent = e.message; }
+  // Si el servidor tarda en responder (por ejemplo, está despertando), se reintenta unas veces antes de rendirse
+  for (let i = 0; i < 6 && !cat; i++) {
+    try { cat = await api('/catalogo'); $('#err').textContent = ''; }
+    catch (e) {
+      if (i === 5) { $('#err').textContent = 'No se pudo cargar el catálogo. Recarga la página en un momento.'; break; }
+      $('#err').textContent = 'El servidor está tardando en responder. Reintentando…';
+      await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+    }
+  }
   paint();
 })();

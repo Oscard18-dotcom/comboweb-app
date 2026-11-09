@@ -114,6 +114,7 @@ Con `PAYMENT_PROVIDER=simulado` (valor por defecto) la compra lleva a una pantal
 - **Configura el correo en `.env`** (hay 3 modos):
   - `MAIL_PROVIDER=consola` (por defecto): solo imprime en pantalla. **No se permite en producción.**
   - `MAIL_PROVIDER=smtp`: define `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` y `MAIL_FROM`. Sirve con Gmail (contraseña de aplicación), Brevo, Mailgun, etc.
+  - `MAIL_PROVIDER=brevo`: define `BREVO_API_KEY` y `MAIL_FROM` (un remitente verificado en Brevo). Va por HTTPS, así que funciona en Render gratis; el plan gratis de Brevo tiene un tope diario de envíos.
   - `MAIL_PROVIDER=resend`: define `RESEND_API_KEY` y `MAIL_FROM`. Va por HTTPS; úsalo si tu hosting bloquea el puerto SMTP (algunos hostings gratuitos lo hacen).
 - Los textos escapan lo que escribió el cliente (no se inyecta código en el correo) y el asunto solo lleva el folio.
 - No incluye WhatsApp: solo correo, como indica el documento de tecnologías.
@@ -204,7 +205,7 @@ src/services/pedidos.js Validación del combo, checkout y confirmación de pago 
 src/routes/inventario.js, recetas.js  Inventario con movimientos y alertas; recetas con costeo
 src/routes/cocina.js, reportes.js, notificaciones.js  Tablero y estatus; dashboard y reportes; avisos por correo
 src/services/notificaciones.js  Bandeja de salida con reintentos
-src/mail/             Correo: consola.js, smtp.js y resend.js
+src/mail/             Correo: consola.js, smtp.js, resend.js y brevo.js
 src/payments/         Pasarelas: simulado.js y stripe.js
 render.yaml, scripts/preparar-nube.js  Publicación en Render (Sprint 8)
 src/routes/proveedores.js, pedidosProveedor.js  Proveedores y pedidos de insumos; src/services/compras.js (transacción: pedido + correo + stock)
@@ -233,3 +234,16 @@ Contraseñas con bcrypt, consultas parametrizadas (sin inyección SQL), límite 
 
 ## Trabajo futuro
 Recuperación de contraseña por correo, reembolsos desde el sistema, costos históricos por pedido y más: ver la **Documentación técnica, sección 13**.
+
+
+---
+
+## Novedades (versión 1.1.0)
+
+- **Olvidé mi contraseña:** en la pantalla de entrada, "¿Olvidaste tu contraseña?" envía un enlace al correo (vence en 1 hora y sirve una sola vez; solo se guarda su hash; máximo 3 por hora y por cuenta). Al usarlo se cierran las sesiones abiertas. Si el correo no puede enviarse (modo demostración), el administrador sigue pudiendo restablecerla desde la pestaña Usuarios. Límite por IP ajustable con `AUTH_RATE_LIMIT_OLVIDE` (por defecto 5 cada 15 minutos).
+- **Dependencias actualizadas:** sin vulnerabilidades conocidas (`npm audit` reporta 0).
+- **Sesión más segura:** una consulta lenta hecha con la sesión anterior ya no cierra la sesión nueva justo después de cambiar la contraseña.
+- **Servidor lento:** si al abrir el sistema el servidor tarda en responder, se reintenta unas veces y se avisa en pantalla.
+- **Pruebas automáticas en GitHub:** `.github/workflows/pruebas.yml` corre todas las pruebas en cada subida y muestra ✓ o ✗ en el repositorio. Usa una base de datos temporal, no la de Neon.
+- Pruebas nuevas: `npm run test:sprint10`.
+- **Correo por Brevo:** nuevo `MAIL_PROVIDER=brevo` (API por HTTPS), que funciona en Render gratis. Variables: `BREVO_API_KEY` y `MAIL_FROM`.

@@ -1,6 +1,7 @@
 // Pruebas de las pantallas en un navegador simulado (jsdom): cliente, almacén, administración y cocina.
 // Úsalas SOLO en tu base de desarrollo (crean datos de prueba y los borran al final).
 //   npm run test:ui     (requiere SEED_PASSWORD en .env; no necesita el servidor encendido)
+process.env.AUTH_RATE_LIMIT = '100000'; // el límite real se prueba aparte (sprint 6)
 const path = require('path');
 const app = require('../src/app');
 const db = require('../src/db');
@@ -49,6 +50,28 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const fecha = svc.addDays(svc.todayMX(), 12 + Math.floor(Math.random() * 50));
     let dom = await abrir(B + '/'); let w = dom.window, $ = (s) => w.document.querySelector(s);
     t('catálogo público visible para visitantes', await until(() => w.document.querySelectorAll('#cat .item').length >= 6));
+    /* --- Recuperar la contraseña --- */
+    $('#ir-olvide').click();
+    t('"¿Olvidaste tu contraseña?" muestra el formulario de correo y oculta el de entrar', !$('#f-olvide').hidden && $('#f-login').hidden);
+    $('#f-olvide').elements.correo.value = `nadie${R}@prueba.test`; enviarForm(w, $('#f-olvide'));
+    t('al pedir el enlace se muestra el mensaje (sin revelar si el correo existe)', await until(() => /Si el correo está registrado/.test($('#okauth').textContent)));
+    $('#f-olvide [data-volver]').click();
+    t('"Volver a iniciar sesión" regresa al formulario de entrada', !$('#f-login').hidden && $('#f-olvide').hidden && $('#okauth').textContent === '');
+    {
+      const ru = await (await fetch(B + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: 'Rec UI', correo: `recui${R}@prueba.test`, password: 'vieja12345' }) })).json();
+      const tokR = require('crypto').randomBytes(32).toString('hex');
+      await db.query("INSERT INTO recuperaciones_password(usuario_id,token_hash,expira_en) VALUES($1,$2,now()+interval '1 hour')", [ru.usuario.id, require('crypto').createHash('sha256').update(tokR).digest('hex')]);
+      const wr = (await abrir(`${B}/?reset=${tokR}`, { t: ru.token, u: JSON.stringify(ru.usuario) })).window, $r = (x) => wr.document.querySelector(x);
+      t('el enlace del correo abre el formulario de nueva contraseña, cierra la sesión y limpia la dirección', await until(() => !$r('#f-reset').hidden && $r('#f-login').hidden && !wr.sessionStorage.getItem('t') && wr.location.search === ''));
+      $r('#f-reset').elements.nueva.value = 'nueva12345'; $r('#f-reset').elements.repetir.value = 'distinta12345'; enviarForm(wr, $r('#f-reset'));
+      t('si las dos contraseñas no coinciden lo avisa', await until(() => /no coinciden/.test($r('#err').textContent)));
+      $r('#f-reset').elements.repetir.value = 'nueva12345'; enviarForm(wr, $r('#f-reset'));
+      t('al guardar, avisa que se actualizó y muestra el formulario de entrar', await until(() => /Contraseña actualizada/.test($r('#okauth').textContent) && !$r('#f-login').hidden && $r('#f-reset').hidden));
+      t('la contraseña nueva ya sirve en el sistema', (await fetch(B + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ correo: `recui${R}@prueba.test`, password: 'nueva12345' }) })).status === 200);
+      const wm = (await abrir(`${B}/?reset=${'a'.repeat(64)}`)).window; await until(() => !wm.document.querySelector('#f-reset').hidden); wm.document.querySelector('#f-reset').elements.nueva.value = 'nueva12345'; wm.document.querySelector('#f-reset').elements.repetir.value = 'nueva12345'; enviarForm(wm, wm.document.querySelector('#f-reset'));
+      t('un enlace inválido muestra el error y no deja pasar', await until(() => /venció o ya se usó/.test(wm.document.querySelector('#err').textContent)), wm.document.querySelector('#err').textContent + '/' + wm.document.querySelector('#f-reset').hidden);
+      await db.query('DELETE FROM usuarios WHERE id=$1', [ru.usuario.id]);
+    }
     $('#tab-reg').click();
     const fr = $('#f-reg'); fr.elements.nombre.value = 'Prueba UI'; fr.elements.correo.value = `ui${R}@prueba.test`; fr.elements.password.value = 'secreta123';
     fr.dispatchEvent(new w.Event('submit', { cancelable: true, bubbles: true }));
@@ -67,6 +90,16 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     sel.value = '12:00'; sel.dispatchEvent(new w.Event('change'));
     [...w.document.querySelectorAll('#armar .seg button')].find((b) => b.textContent === 'Sí').click();
     const area = w.document.querySelector('#armar textarea'); area.value = '<img src=x onerror="window.__pwned=1">Feliz día'; area.dispatchEvent(new w.Event('input'));
+    t('con producto, fecha y hora pero SIN dirección el botón Pagar sigue deshabilitado', await until(() => [...w.document.querySelectorAll('#armar .errbox div')].some((x) => /dirección de entrega/.test(x.textContent))) && pagar.disabled === true);
+    const $a = (s) => w.document.querySelector('#armar ' + s), llenar = (el, v) => { el.value = v; el.dispatchEvent(new w.Event('input')); };
+    llenar($a('input[aria-label="Código postal"]'), '91190');
+    t('al escribir el código postal se llenan las colonias (5 opciones + la de “Elige”) y el municipio', await until(() => $a('select[aria-label=Colonia]').querySelectorAll('option').length === 6) && /Xalapa, Veracruz/.test($a('.cpinfo').textContent));
+    llenar($a('input[aria-label="Código postal"]'), '91000');
+    t('un código con una sola colonia la elige solo', await until(() => $a('select[aria-label=Colonia]').value === 'Xalapa Enríquez Centro'));
+    llenar($a('input[aria-label="Código postal"]'), '91190');
+    await until(() => $a('select[aria-label=Colonia]').querySelectorAll('option').length === 6);
+    const sc = $a('select[aria-label=Colonia]'); sc.value = 'Las Flores'; sc.dispatchEvent(new w.Event('change'));
+    llenar($a('input[aria-label=Calle]'), '<b>Av. Pruebas</b>'); llenar($a('input[aria-label="Número exterior"]'), '25'); llenar($a('input[aria-label^="Referencias"]'), 'Portón azul');
     t('con todo completo el botón Pagar se habilita', await until(() => !pagar.disabled, 4000));
     pagar.click();
     const ck = await until(() => (w.__checkout && w.__checkout.checkout_id ? w.__checkout : null));
@@ -79,6 +112,14 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('la dedicatoria se muestra como TEXTO (no se ejecuta)', w3.document.querySelector('#msg').textContent.includes('<img src=x') && !w3.document.querySelector('#msg img') && !w3.__pwned);
     w3.document.querySelector('#nav button[data-tab=mis]').click();
     t('"Mis pedidos" lista el pedido con estatus Pendiente', await until(() => /EC-\d{4}/.test(w3.document.querySelector('#mis').textContent) && /Pendiente/.test(w3.document.querySelector('#mis').textContent)));
+    t('Notificaciones: la pestaña existe y su globo muestra 1 sin leer tras la compra', await until(() => { const b = w3.document.querySelector('#badge'); return !!w3.document.querySelector('#nav button[data-tab=avis]') && b && !b.hidden && b.textContent === '1'; }));
+    w3.document.querySelector('#nav button[data-tab=avis]').click();
+    t('Notificaciones: muestra “Pedido EC-… confirmado” como nueva, con botón para ver el pedido', await until(() => /confirmado/.test(w3.document.querySelector('#avisos').textContent) && !!w3.document.querySelector('#avisos .aviso-n.nueva') && /Ver pedido EC-\d{4}/.test(w3.document.querySelector('#avisos').textContent)) && w3.document.querySelector('#mis').hidden && !w3.document.querySelector('#avisos').hidden);
+    [...w3.document.querySelectorAll('#avisos button')].find((b) => /Marcar todas/.test(b.textContent)).click();
+    t('Notificaciones: “Marcar todas como leídas” apaga el globo y quita el resaltado', await until(() => w3.document.querySelector('#badge').hidden && !w3.document.querySelector('#avisos .aviso-n.nueva')));
+    [...w3.document.querySelectorAll('#avisos button')].find((b) => /Ver pedido/.test(b.textContent)).click();
+    t('Notificaciones: “Ver pedido” abre el comprobante', await until(() => /Comprobante EC-\d{4}/.test(w3.document.querySelector('#msg').textContent) && !w3.document.querySelector('#mis').hidden));
+    w3.document.querySelector('#nav button[data-tab=mis]').click();
     t('regreso con pago cancelado muestra aviso', await until(async () => /Pago cancelado/.test((await abrir(`${B}/?cancelado=abc`, { t: token, u: usr })).window.document.querySelector('#msg').textContent) || true));
     w3.document.querySelector('#out').click();
     t('cerrar sesión regresa al login', !w3.document.querySelector('#auth').hidden && w3.document.querySelector('#armar').hidden);
@@ -320,7 +361,8 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     setF('actual', 'secreta123'); setF('nueva', 'nueva-clave-1'); setF('repetir', 'nueva-clave-1'); enviarForm(wcta, fc());
     t('mi cuenta: cambio correcto', await until(() => /Contraseña actualizada/.test(wcta.document.querySelector('#cuenta').textContent)));
     const tokNuevo = wcta.sessionStorage.getItem('t');
-    t('…la sesión actual se renueva (sigue dentro) y la anterior queda cerrada', tokNuevo && tokNuevo !== rc.token && (await fetch(B + '/api/auth/me', { headers: { Authorization: 'Bearer ' + tokNuevo } })).status === 200 && (await fetch(B + '/api/auth/me', { headers: { Authorization: 'Bearer ' + rc.token } })).status === 401);
+    const meNuevo = tokNuevo ? (await fetch(B + '/api/auth/me', { headers: { Authorization: 'Bearer ' + tokNuevo } })).status : 'sin token', meViejo = (await fetch(B + '/api/auth/me', { headers: { Authorization: 'Bearer ' + rc.token } })).status;
+    t('…la sesión actual se renueva (sigue dentro) y la anterior queda cerrada', !!tokNuevo && tokNuevo !== rc.token && meNuevo === 200 && meViejo === 401, `nuevo=${meNuevo} viejo=${meViejo} distinto=${tokNuevo !== rc.token}`);
     t('…y entra con la contraseña nueva', await loginApi(`ui6cta${R}@prueba.test`, 'nueva-clave-1') === 200 && await loginApi(`ui6cta${R}@prueba.test`, 'secreta123') === 401);
 
     /* ---------- COCINA ---------- */

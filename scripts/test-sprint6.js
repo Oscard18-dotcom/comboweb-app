@@ -39,13 +39,13 @@ function rutas() {
   })(app._router.stack, '');
   return out;
 }
-const PUBLICAS = new Set(['GET /api/catalogo', 'GET /api/pedidos/disponibilidad', 'POST /api/pedidos/cotizar', 'POST /api/auth/login', 'POST /api/auth/register', 'GET /api/salud', 'POST /api/pagos/webhook/stripe']);
+const PUBLICAS = new Set(['GET /api/catalogo', 'GET /api/catalogo/codigo-postal/:cp', 'GET /api/pedidos/disponibilidad', 'POST /api/pedidos/cotizar', 'POST /api/auth/login', 'POST /api/auth/register', 'POST /api/auth/olvide', 'POST /api/auth/restablecer', 'GET /api/salud', 'POST /api/pagos/webhook/stripe']);
 function clasifica(m, p) {
   if (PUBLICAS.has(`${m} ${p}`)) return { tipo: 'publica' };
   if (['/api/admin', '/api/recetas', '/api/reportes', '/api/notificaciones', '/api/proveedores', '/api/pedidos-proveedor'].some((x) => p.startsWith(x))) return { tipo: 'roles', roles: ['admin'] };
   if (p.startsWith('/api/inventario')) return { tipo: 'roles', roles: ['almacen', 'admin'] };
   if (p.startsWith('/api/cocina')) return { tipo: 'roles', roles: ['cocina', 'admin'] };
-  if (p === '/api/pedidos/checkout' || p.startsWith('/api/pedidos/checkout/') || (m === 'GET' && p === '/api/pedidos') || p.startsWith('/api/pagos/simulado')) return { tipo: 'roles', roles: ['cliente'] };
+  if (p === '/api/pedidos/checkout' || p.startsWith('/api/pedidos/checkout/') || (m === 'GET' && p === '/api/pedidos') || p.startsWith('/api/pagos/simulado') || p.startsWith('/api/avisos')) return { tipo: 'roles', roles: ['cliente'] };
   if (['/api/pedidos/:id', '/api/auth/me', '/api/auth/cambiar-password'].includes(p)) return { tipo: 'sesion' };
   return null;
 }
@@ -148,7 +148,7 @@ const concreta = (p) => p.replace('/checkout/:id', '/checkout/00000000-0000-4000
 
     /* ===== Carga simultánea (detecta conexiones agotadas o bloqueos) ===== */
     const cat = (await call('GET', '/api/catalogo')).j; const P = (n) => cat.productos.find((p) => p.nombre === n).id; const PRES = cat.presentaciones.find((p) => p.nombre === 'Caja mediana').id;
-    const combo = (o = {}) => ({ items: [{ producto_id: P('Cupcake'), cantidad: 2 }], presentacion_id: PRES, fecha: dia(0), hora: '12:00', ...o });
+    const combo = (o = {}) => ({ items: [{ producto_id: P('Cupcake'), cantidad: 2 }], presentacion_id: PRES, fecha: dia(0), hora: '12:00', direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle de Prueba', num_ext: '12' }, ...o });
     const t0 = Date.now();
     const cot = await Promise.all(Array.from({ length: 150 }, () => call('POST', '/api/pedidos/cotizar', combo())));
     t(`150 cotizaciones simultáneas sin un solo error (${Date.now() - t0} ms)`, cot.every((x) => x.s === 200 && x.j.ok));

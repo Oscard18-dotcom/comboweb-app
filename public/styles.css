@@ -131,3 +131,5 @@ main .mu,main small,main h3,main dt{color:var(--tx2)}
 .badge{display:inline-block;min-width:18px;padding:0 6px;margin-left:4px;border-radius:10px;background:var(--bar-hi);color:var(--bar);font-size:12px;font-weight:700;line-height:18px;text-align:center}
 .badge[hidden]{display:none}
 .aviso-n.nueva{border-left:5px solid var(--pri);background:var(--sel)}
+
+.enlace{background:none;border:0;padding:0;color:var(--tx2);text-decoration:underline;cursor:pointer;font:inherit}

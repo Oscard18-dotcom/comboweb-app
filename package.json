@@ -1,6 +1,6 @@
 {
   "name": "comboweb-app",
-  "version": "0.9.0",
+  "version": "1.1.0",
   "description": "ComboWeb App - EN COMBO (Sprint 9: dirección de entrega y legibilidad)",
   "main": "src/server.js",
   "engines": {
@@ -24,7 +24,8 @@
     "test:sprint7": "node scripts/test-sprint7.js",
     "start:nube": "node scripts/preparar-nube.js && node src/server.js",
     "test:sprint8": "node scripts/test-sprint8.js",
-    "test:sprint9": "node scripts/test-sprint9.js"
+    "test:sprint9": "node scripts/test-sprint9.js",
+    "test:sprint10": "node scripts/test-sprint10.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

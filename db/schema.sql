@@ -231,3 +231,14 @@ ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS dir_referencias VARCHAR(200);
 -- Sprint 9: bandeja de notificaciones del cliente (se reutilizan los avisos de pedido; solo se marca cuándo los leyó)
 ALTER TABLE notificaciones ADD COLUMN IF NOT EXISTS leida_en TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS notificaciones_cliente_idx ON notificaciones (cliente_id, creado_en DESC);
+
+-- Recuperación de contraseña: solo se guarda el hash del enlace; vence en 1 hora y sirve una sola vez
+CREATE TABLE IF NOT EXISTS recuperaciones_password (
+  id         SERIAL PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  token_hash CHAR(64) NOT NULL UNIQUE,
+  expira_en  TIMESTAMPTZ NOT NULL,
+  usado_en   TIMESTAMPTZ,
+  creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS recuperaciones_usuario_idx ON recuperaciones_password (usuario_id, creado_en);

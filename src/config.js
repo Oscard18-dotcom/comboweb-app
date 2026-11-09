@@ -18,8 +18,9 @@ if (proveedor === 'stripe' && (!process.env.STRIPE_SECRET_KEY || !process.env.ST
   throw new Error('Con PAYMENT_PROVIDER=stripe define STRIPE_SECRET_KEY y STRIPE_WEBHOOK_SECRET.');
 
 const correo = process.env.MAIL_PROVIDER || 'consola';
-if (!['consola', 'smtp', 'resend'].includes(correo)) throw new Error('MAIL_PROVIDER debe ser "consola", "smtp" o "resend".');
+if (!['consola', 'smtp', 'resend', 'brevo'].includes(correo)) throw new Error('MAIL_PROVIDER debe ser "consola", "smtp", "resend" o "brevo".');
 if (correo === 'consola' && process.env.NODE_ENV === 'production' && !demo)
-  throw new Error('MAIL_PROVIDER=consola no está permitido en producción: los clientes no recibirían sus avisos. Usa "smtp" o "resend" (o, solo para una demostración pública, define MODO_DEMO=true).');
+  throw new Error('MAIL_PROVIDER=consola no está permitido en producción: los clientes no recibirían sus avisos. Usa "smtp", "resend" o "brevo" (o, solo para una demostración pública, define MODO_DEMO=true).');
 if (correo === 'smtp' && (!process.env.SMTP_HOST || !process.env.MAIL_FROM)) throw new Error('Con MAIL_PROVIDER=smtp define SMTP_HOST y MAIL_FROM.');
+if (correo === 'brevo' && (!process.env.BREVO_API_KEY || !process.env.MAIL_FROM)) throw new Error('Con MAIL_PROVIDER=brevo define BREVO_API_KEY y MAIL_FROM.');
 if (correo === 'resend' && (!process.env.RESEND_API_KEY || !process.env.MAIL_FROM)) throw new Error('Con MAIL_PROVIDER=resend define RESEND_API_KEY y MAIL_FROM.');
