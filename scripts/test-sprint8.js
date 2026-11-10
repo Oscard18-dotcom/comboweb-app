@@ -151,7 +151,7 @@ async function arrancar(env, puerto) {
       const cuenta = async (sql) => (await T.query(sql)).rows[0].n;
       t('…hay 10 insumos, 6 productos con receta y 3 presentaciones', await cuenta('SELECT count(*)::int n FROM insumos') === 10 && await cuenta('SELECT count(*)::int n FROM productos') === 6 && await cuenta('SELECT count(*)::int n FROM recetas') === 6 && await cuenta('SELECT count(*)::int n FROM presentaciones') === 3);
       t('…NO se crean cuentas de prueba públicas (@encombo.test): solo el administrador', await cuenta('SELECT count(*)::int n FROM usuarios') === 1 && await cuenta("SELECT count(*)::int n FROM usuarios WHERE correo LIKE '%@encombo.test'") === 0 && await cuenta("SELECT count(*)::int n FROM usuarios WHERE rol='admin'") === 1);
-      t('…se cargan los 4 combos de ejemplo (Pequeño, Mediano, Grande y Pareja)', await cuenta('SELECT count(*)::int n FROM combos') === 4);
+      t('…se cargan los 4 combos de ejemplo (Mini, Clásico, Grande y Pareja)', await cuenta('SELECT count(*)::int n FROM combos') === 4);
       await T.query('DELETE FROM combos');
       await T.query("DELETE FROM productos WHERE nombre='Cupcake'");
       await T.query("UPDATE insumos SET stock=1 WHERE nombre='Harina'");

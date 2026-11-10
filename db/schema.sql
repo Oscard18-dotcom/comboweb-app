@@ -270,6 +270,12 @@ CREATE TABLE IF NOT EXISTS ajustes (
 ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS combo_nombre VARCHAR(40);
 -- La clave de un combo creado por el administrador puede ser más larga que las de ejemplo
 ALTER TABLE pedidos ALTER COLUMN combo TYPE VARCHAR(40);
-UPDATE pedidos SET combo_nombre = CASE combo WHEN 'pequeno' THEN 'Combo Pequeño' WHEN 'mediano' THEN 'Combo Mediano' WHEN 'grande' THEN 'Combo Grande'
+UPDATE pedidos SET combo_nombre = CASE combo WHEN 'pequeno' THEN 'Combo Mini' WHEN 'mediano' THEN 'Combo Clásico' WHEN 'grande' THEN 'Combo Grande'
                                              WHEN 'pareja' THEN 'Combo Pareja' WHEN 'personalizado' THEN 'Combo personalizado' END
  WHERE combo_nombre IS NULL AND combo IN ('pequeno', 'mediano', 'grande', 'pareja', 'personalizado');
+
+-- Cambio de nombre de los combos de ejemplo: Pequeño → Mini y Mediano → Clásico (solo si conservan el nombre original; la clave interna no cambia)
+UPDATE combos SET nombre = 'Combo Mini' WHERE clave = 'pequeno' AND nombre = 'Combo Pequeño' AND NOT EXISTS (SELECT 1 FROM combos WHERE lower(nombre) = 'combo mini');
+UPDATE combos SET nombre = 'Combo Clásico' WHERE clave = 'mediano' AND nombre = 'Combo Mediano' AND NOT EXISTS (SELECT 1 FROM combos WHERE lower(nombre) = 'combo clásico');
+UPDATE pedidos SET combo_nombre = 'Combo Mini' WHERE combo = 'pequeno' AND combo_nombre = 'Combo Pequeño';
+UPDATE pedidos SET combo_nombre = 'Combo Clásico' WHERE combo = 'mediano' AND combo_nombre = 'Combo Mediano';

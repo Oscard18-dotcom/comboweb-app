@@ -77,9 +77,9 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     fr.dispatchEvent(new w.Event('submit', { cancelable: true, bubbles: true }));
     t('registro: inicia sesión y muestra "Armar combo"', await until(() => !$('#armar').hidden && $('#who').textContent.includes('Cliente') && $('#armar .opt.tipo')));
     const tiposUI = [...w.document.querySelectorAll('#armar .opt.tipo')];
-    t('al armar un pedido se elige primero el tipo de combo: Pequeño, Mediano, Grande, Pareja y personalizado', tiposUI.length === 5 && ['Combo Pequeño', 'Combo Mediano', 'Combo Grande', 'Combo Pareja', 'Combo personalizado'].every((n) => tiposUI.some((x) => x.textContent.includes(n))) && !$('#armar .item') && /Elige un tipo de combo/.test($('#armar').textContent));
+    t('al armar un pedido se elige primero el tipo de combo: Mini, Clásico, Grande, Pareja y personalizado', tiposUI.length === 5 && ['Combo Mini', 'Combo Clásico', 'Combo Grande', 'Combo Pareja', 'Combo personalizado'].every((n) => tiposUI.some((x) => x.textContent.includes(n))) && !$('#armar .item') && /Elige un tipo de combo/.test($('#armar').textContent));
     tiposUI.find((x) => x.dataset.tipo === 'mediano').querySelector('input').click();
-    t('al elegir Combo Mediano solo aparece ese combo (no todo el catálogo) y el resumen cotiza sus 3 productos', await until(() => w.document.querySelectorAll('#armar .item').length === 1 && /Cupcake/.test($('#armar .item').textContent) && /Café latte/.test($('#armar aside').textContent) && /Brownie x1/.test($('#armar aside').textContent) && /Cupcake x1/.test($('#armar aside').textContent)));
+    t('al elegir Combo Clásico solo aparece ese combo (no todo el catálogo) y el resumen cotiza sus 3 productos', await until(() => w.document.querySelectorAll('#armar .item').length === 1 && /Cupcake/.test($('#armar .item').textContent) && /Café latte/.test($('#armar aside').textContent) && /Brownie x1/.test($('#armar aside').textContent) && /Cupcake x1/.test($('#armar aside').textContent)));
     w.document.querySelectorAll('#armar .item .qty button')[1].click();
     t('el combo se pide por cantidad de combos (2 combos = 2 de cada producto)', await until(() => /Brownie x2/.test($('#armar aside').textContent) && /Cupcake x2/.test($('#armar aside').textContent)));
     tiposUI.find((x) => x.dataset.tipo === 'personalizado').querySelector('input').click();
@@ -255,7 +255,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const filaT = (txt) => [...w.document.querySelectorAll('#staff tbody tr')].find((f) => f.textContent.includes(txt));
     const botonF = (txt, b) => [...filaT(txt).querySelectorAll('button')].find((x) => x.textContent === b);
     t('catálogo: lista productos y combos con su precio', await until(() => w.document.querySelectorAll('#staff table').length === 2 && filaT(`UI4 Prod ${R}`) && !/Caja chica|Presentaciones/.test(w.document.querySelector('#staff').textContent)));
-    t('catálogo del administrador: lista los 4 combos y el personalizado con precios', ['Combo Pequeño', 'Combo Mediano', 'Combo Grande', 'Combo Pareja', 'Combo personalizado'].every((n) => !!filaT(n)) && /2 Brownie \+ 2 Café latte \+ 2 Cupcake \+ 2 Galleta/.test(filaT('Combo Grande').textContent));
+    t('catálogo del administrador: lista los 4 combos y el personalizado con precios', ['Combo Mini', 'Combo Clásico', 'Combo Grande', 'Combo Pareja', 'Combo personalizado'].every((n) => !!filaT(n)) && /2 Brownie \+ 2 Café latte \+ 2 Cupcake \+ 2 Galleta/.test(filaT('Combo Grande').textContent));
     cambiar(w, filaT(`UI4 Prod ${R}`).querySelector('input'), '44.5'); botonF(`UI4 Prod ${R}`, 'Guardar precio').click();
     t('catálogo: cambiar el precio de un producto se guarda', await until(async () => Number((await db.query('SELECT precio FROM productos WHERE nombre=$1', [`UI4 Prod ${R}`])).rows[0].precio) === 44.5) && await until(() => /guardado/.test($('#staff .okmsg').textContent)));
     cambiar(w, filaT(`UI4 Prod ${R}`).querySelector('input'), '-5'); botonF(`UI4 Prod ${R}`, 'Guardar precio').click();
@@ -269,7 +269,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const btnTxt = (txt) => [...w.document.querySelectorAll('#staff button')].find((b) => b.textContent === txt);
     const nomC = `UI Combo ${R}`.slice(0, 40), nomC2 = `UI Editado ${R}`.slice(0, 40);
     const combosBD = async (n) => (await db.query('SELECT c.id,c.activo,c.nombre,(SELECT json_agg(json_build_array(i.producto_id,i.cantidad) ORDER BY i.producto_id) FROM combo_items i WHERE i.combo_id=c.id) AS items FROM combos c WHERE c.nombre=$1', [n])).rows[0];
-    t('combos: cada combo tiene Editar, Deshabilitar y Eliminar, y hay botón "+ Nuevo combo"', !!btnTxt('+ Nuevo combo') && ['Editar', 'Deshabilitar', 'Eliminar'].every((b) => [...filaT('Combo Pequeño').querySelectorAll('button')].some((x) => x.textContent === b)) && !filaT('Combo personalizado').querySelector('button'));
+    t('combos: cada combo tiene Editar, Deshabilitar y Eliminar, y hay botón "+ Nuevo combo"', !!btnTxt('+ Nuevo combo') && ['Editar', 'Deshabilitar', 'Eliminar'].every((b) => [...filaT('Combo Mini').querySelectorAll('button')].some((x) => x.textContent === b)) && !filaT('Combo personalizado').querySelector('button'));
     btnTxt('+ Nuevo combo').click();
     const formN = await until(() => w.document.querySelector('#staff form[aria-label="Nuevo combo"]'));
     t('combos: "+ Nuevo combo" abre el formulario', !!formN);

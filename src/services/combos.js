@@ -6,8 +6,8 @@ const PERSONALIZADO = { clave: 'personalizado', nombre: 'Combo personalizado', d
 
 // Combos de ejemplo que se cargan una sola vez en una base nueva (o que ya tenía productos).
 const INICIALES = [
-  { clave: 'pequeno', nombre: 'Combo Pequeño', descripcion: 'Para una persona: una galleta y un café americano.', items: [['Galleta', 1], ['Café americano', 1]] },
-  { clave: 'mediano', nombre: 'Combo Mediano', descripcion: 'Para dos: cupcake, brownie y un café latte.', items: [['Cupcake', 1], ['Brownie', 1], ['Café latte', 1]] },
+  { clave: 'pequeno', nombre: 'Combo Mini', descripcion: 'Para una persona: una galleta y un café americano.', items: [['Galleta', 1], ['Café americano', 1]] },
+  { clave: 'mediano', nombre: 'Combo Clásico', descripcion: 'Para dos: cupcake, brownie y un café latte.', items: [['Cupcake', 1], ['Brownie', 1], ['Café latte', 1]] },
   { clave: 'grande', nombre: 'Combo Grande', descripcion: 'Para compartir: 2 cupcakes, 2 brownies, 2 galletas y 2 cafés latte.', items: [['Cupcake', 2], ['Brownie', 2], ['Galleta', 2], ['Café latte', 2]] },
   { clave: 'pareja', nombre: 'Combo Pareja', descripcion: 'Dos bebidas y dos postres: café latte, té chai, cupcake y brownie.', items: [['Café latte', 1], ['Té chai', 1], ['Cupcake', 1], ['Brownie', 1]] },
 ];

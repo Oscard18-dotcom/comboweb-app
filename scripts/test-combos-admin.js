@@ -50,7 +50,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
       [{ nombre, items: it([['Galleta', 1], ['Galleta', 2]]) }, 'producto repetido'],
       [{ nombre, items: [{ producto_id: 99999999, cantidad: 1 }] }, 'producto inexistente'],
       [{ nombre, descripcion: 'x'.repeat(121), items: it([['Galleta', 1]]) }, 'descripción larga'],
-      [{ nombre: 'Combo Pequeño', items: it([['Galleta', 1]]) }, 'nombre repetido'],
+      [{ nombre: 'Combo Mini', items: it([['Galleta', 1]]) }, 'nombre repetido'],
     ];
     for (const [b, d] of malos) { const r = await call('POST', '/api/admin/combos', b, admin); t(`crear inválido (${d}) → 4xx`, r.s === 400 || r.s === 409, r.s + ' ' + JSON.stringify(r.j)); }
 
@@ -81,7 +81,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     t('editar: cambia nombre, descripción, productos y cantidades', r.s === 200 && c.nombre === nombre2 && c.descripcion === 'Editado' && c.items.length === 2 && c.items.some((x) => x.nombre === 'Café latte' && x.cantidad === 3) && !c.items.some((x) => x.nombre === 'Galleta'));
     t('editar: la clave no cambia y el precio se recalcula', Math.abs(c.precio - (Number(P('Cupcake').precio) + 3 * Number(P('Café latte').precio))) < 0.005);
     t('editar: puede conservar su propio nombre', (await call('PUT', `/api/admin/combos/${id}`, { nombre: nombre2, items: it([['Cupcake', 1], ['Café latte', 3]]) }, admin)).s === 200);
-    t('editar: no puede tomar el nombre de otro combo → 409', (await call('PUT', `/api/admin/combos/${id}`, { nombre: 'Combo Mediano', items: it([['Cupcake', 1]]) }, admin)).s === 409);
+    t('editar: no puede tomar el nombre de otro combo → 409', (await call('PUT', `/api/admin/combos/${id}`, { nombre: 'Combo Clásico', items: it([['Cupcake', 1]]) }, admin)).s === 409);
     t('editar: inválido no cambia nada', (await call('PUT', `/api/admin/combos/${id}`, { nombre: nombre2, items: [] }, admin)).s === 400 && (await mio()).items.length === 2);
     t('editar: combo inexistente → 404; id inválido → 400', (await call('PUT', '/api/admin/combos/99999999', { nombre, items: it([['Galleta', 1]]) }, admin)).s === 404 && (await call('PUT', '/api/admin/combos/abc', {}, admin)).s === 400);
     t('el pedido anterior conserva el nombre con el que se compró', (await q('SELECT combo_nombre FROM pedidos WHERE id=$1', [pid]))[0].combo_nombre === nombre);
@@ -115,7 +115,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     const hoy = svc.todayMX();
     const rep = (await call('GET', `/api/reportes/ventas?desde=${hoy}&hasta=${svc.addDays(hoy, 200)}&agrupar=mes`, undefined, admin)).j;
     t('Reportes marca el combo eliminado y sus ventas siguen contadas', rep.combos.some((x) => /\(eliminado\)/.test(x.nombre) && x.pedidos >= 1));
-    t('Reportes lista los combos vigentes aunque no tengan ventas', ['Combo Pequeño', 'Combo Mediano', 'Combo Grande', 'Combo Pareja', 'Combo personalizado'].every((n) => rep.combos.some((x) => x.nombre === n)));
+    t('Reportes lista los combos vigentes aunque no tengan ventas', ['Combo Mini', 'Combo Clásico', 'Combo Grande', 'Combo Pareja', 'Combo personalizado'].every((n) => rep.combos.some((x) => x.nombre === n)));
     r = await call('GET', '/api/pedidos', undefined, cli);
     t('Mis pedidos sigue mostrando el combo eliminado', r.j.pedidos.some((p) => p.id === pid && p.combo && p.combo.nombre === nombre), JSON.stringify(r.j).slice(0, 200));
 
