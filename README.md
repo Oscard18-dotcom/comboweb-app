@@ -256,5 +256,5 @@ Recuperación de contraseña por correo, reembolsos desde el sistema, costos his
 - **El servidor valida el combo:** si se pide un combo prearmado con productos o cantidades que no le corresponden, el pedido se rechaza (`combo_invalido`). Sin indicar combo se toma como personalizado.
 - **Sin tamaño de caja:** ya no se pide ni se cobra presentación y no se descuentan cajas del inventario. Los pedidos anteriores conservan su dato.
 - **Combo guardado en el pedido:** aparece en el comprobante, en Mis pedidos, en la ficha de cocina y en Reportes (tabla "Ventas por combo").
-- **Dashboard con ventas por periodo:** botones Hoy, Esta semana, Este mes, Trimestre, Semestre, Año e Histórico total, con ventas, pedidos, ticket promedio, utilidad, margen y detalle. API: `GET /api/reportes/ventas-periodo?periodo=...` (solo administrador).
+- **Dashboard con ventas por periodo:** menú con Día (hoy), Semana, Mes, Año, Histórico total, Últimos 30 días y Elegir fechas (dos calendarios desde / hasta). Muestra ventas, pedidos, ticket promedio, utilidad, margen y detalle. API: `GET /api/reportes/ventas-periodo?periodo=hoy|semana|mes|anio|total|ultimos30|rango` (con `desde` y `hasta` para `rango`; solo administrador).
 - Pruebas nuevas: `npm run test:combos`.
