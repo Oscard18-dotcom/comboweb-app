@@ -5,6 +5,7 @@ const { wrap, paramId } = require('../util');
 const svc = require('../services/pedidos');
 const notif = require('../services/notificaciones');
 const direccion = require('../services/direccion');
+const combos = require('../services/combos');
 
 router.use(auth, roles('cocina', 'admin'));
 
@@ -22,12 +23,12 @@ async function fichas(rows) {
   const por = new Map();
   for (const x of ing) { if (!por.has(x.pedido_id)) por.set(x.pedido_id, []); por.get(x.pedido_id).push({ nombre: x.nombre, unidad: x.unidad, cantidad: Number(x.cantidad) }); }
   return rows.map((r) => ({ id: r.id, folio: svc.folio(r.id), estatus: r.estatus, fecha: r.fecha, hora: r.hora, atrasado: r.atrasado, cliente: r.cliente,
-    presentacion: r.presentacion, dedicatoria: r.dedicatoria, direccion: direccion.desdeFila(r), items: r.items || [], ingredientes: por.get(r.id) || [] }));
+    presentacion: r.presentacion, combo: (combos.porClave(r.combo) || {}).nombre || null, dedicatoria: r.dedicatoria, direccion: direccion.desdeFila(r), items: r.items || [], ingredientes: por.get(r.id) || [] }));
 }
-const BASE = `SELECT p.id,p.estatus,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,p.dedicatoria,pr.nombre AS presentacion,u.nombre AS cliente,${direccion.COLS},
+const BASE = `SELECT p.id,p.estatus,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,p.dedicatoria,p.combo,pr.nombre AS presentacion,u.nombre AS cliente,${direccion.COLS},
     (p.fecha_entrega < $1::date AND p.estatus <> 'Entregado') AS atrasado,
     (SELECT json_agg(json_build_object('nombre',pd.nombre,'cantidad',i.cantidad) ORDER BY pd.nombre) FROM pedido_items i JOIN productos pd ON pd.id=i.producto_id WHERE i.pedido_id=p.id) AS items
-  FROM pedidos p JOIN presentaciones pr ON pr.id=p.presentacion_id JOIN usuarios u ON u.id=p.cliente_id`;
+  FROM pedidos p LEFT JOIN presentaciones pr ON pr.id=p.presentacion_id JOIN usuarios u ON u.id=p.cliente_id`;
 
 // Tablero del día: los pedidos que se entregan ese día + los de días anteriores que siguen sin entregarse (atrasados)
 router.get('/pedidos', wrap(async (req, res) => {

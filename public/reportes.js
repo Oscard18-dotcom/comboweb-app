@@ -10,6 +10,27 @@
     const { e, api, chipC } = H;
     const raiz = e('div'); cont.append(raiz);
     const kp = (t, v, color) => e('div', { class: 'card' }, e('small', { class: 'mu' }, t), e('b', { style: color ? 'color:' + color : '' }, v));
+    let periodo = 'hoy';
+    const NOM = { hoy: 'Hoy', semana: 'Esta semana', mes: 'Este mes', trimestre: 'Trimestre', semestre: 'Semestre', anio: 'Año', total: 'Histórico total' };
+    const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const etq = (p, u) => { const [f, h] = p.split(' '), [y, m, d] = f.split('-'); return u === 'hour' ? h : u === 'day' ? `${d}/${m}` : u === 'week' ? `Semana del ${d}/${m}` : u === 'month' ? `${MES[Number(m) - 1]} ${y}` : y; };
+    const panelV = e('section', { class: 'card tw' });
+    async function cargarVentas() {
+      try {
+        const v = await api('/reportes/ventas-periodo?periodo=' + periodo);
+        const max = Math.max(1, ...v.serie.map((x) => x.ventas));
+        panelV.replaceChildren(e('h3', {}, 'Ventas por periodo'),
+          e('div', { class: 'seg', role: 'group', 'aria-label': 'Periodo de ventas' }, ...Object.entries(NOM).map(([k, n]) => e('button', { type: 'button', 'data-p': k, class: k === periodo ? 'on' : '', onclick: () => { periodo = k; cargarVentas(); } }, n))),
+          e('p', { class: 'mu' }, `Del ${fd(v.desde)} al ${fd(v.hasta)} · cifras en pesos mexicanos (MXN)`),
+          e('div', { class: 'kp', 'data-ventas-periodo': '1' }, kp('Ventas', mx(v.ventas)), kp('Pedidos', String(v.pedidos)), kp('Ticket promedio', mx(v.ticket_promedio)), kp('Utilidad bruta', mx(v.utilidad)), kp('Margen', v.margen_pct + ' %')),
+          v.serie.length ? e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, e('th', {}, v.unidad === 'hour' ? 'Hora' : 'Periodo'), e('th', { class: 'n' }, 'Pedidos'), e('th', { class: 'n' }, 'Ventas'), e('th', {}, ''))),
+            e('tbody', {}, ...v.serie.map((x) => e('tr', {}, e('td', {}, etq(x.periodo, v.unidad)), e('td', { class: 'n' }, String(x.pedidos)), mon(e, x.ventas),
+              e('td', { style: 'width:30%' }, e('span', { style: `display:block;height:8px;border-radius:4px;background:var(--pri);width:${Math.max(2, Math.round(x.ventas / max * 100))}%` })))),
+              e('tr', { class: 'total' }, e('td', {}, 'Suma'), e('td', { class: 'n' }, String(v.pedidos)), mon(e, v.ventas), e('td', {}))))
+            : e('p', { class: 'mu' }, 'No hay ventas en este periodo.'),
+          v.combos.length ? e('p', { class: 'mu' }, 'Por combo: ' + v.combos.map((x) => `${x.nombre} ${mx(x.ventas)} (${x.pedidos})`).join(' · ')) : null);
+      } catch (er) { panelV.replaceChildren(e('p', { class: 'err' }, er.message)); }
+    }
     async function cargar() {
       try {
         const d = await api('/reportes/dashboard');
@@ -24,6 +45,7 @@
       raiz.replaceChildren(
         e('div', { class: 'kp' }, kp('Ventas de hoy', mx(d.ventas_hoy)), kp('Pedidos de hoy', String(d.pedidos_hoy)), kp('Entregas pendientes hoy', String(d.entregas_pendientes_hoy), d.entregas_pendientes_hoy ? '#6A6141' : ''),
           kp('Insumos en reorden', String(d.insumos_en_reorden), d.insumos_en_reorden ? '#B3261E' : ''), kp('Pedidos a proveedor por recibir', String(d.pedidos_proveedor_por_recibir || 0))),
+        panelV,
         e('div', { class: 'card' }, e('h3', {}, 'Pedidos por estatus'), e('div', { class: 'row', style: 'margin:0' }, ...Object.entries(d.por_estatus).map(([k, v]) => e('span', {}, chipC(k, ST[k]), ` ${v}`)))),
         d.pagos_en_revision ? e('div', { class: 'alerta', role: 'alert' }, e('b', {}, `⚠ ${d.pagos_en_revision} pago(s) cobrado(s) sin pedido: requieren reembolso o atención manual desde el panel de la pasarela de pago.`),
           ...d.pagos_revision.map((x) => e('div', {}, `${x.cliente} · ${mx(x.total)} · ${x.proveedor} · ref. ${x.referencia || '—'} · ${new Date(x.creado_en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}`))) : null,
@@ -38,7 +60,7 @@
             e('tbody', {}, ...d.ventas_7_dias.map((x) => e('tr', {}, e('td', {}, fd(x.fecha)), e('td', { class: 'n' }, String(x.pedidos)), mon(e, x.ventas))),
               e('tr', { class: 'total' }, e('td', {}, 'Suma'), e('td', { class: 'n' }, String(total.p)), mon(e, total.v))))));
     }
-    cargar(); H.cada(30000, cargar);
+    cargar(); cargarVentas(); H.cada(30000, () => { cargar(); cargarVentas(); });
   });
 
   // Celda de importe: "$" a la izquierda de la celda y la cifra a la derecha; negativos entre paréntesis
@@ -82,6 +104,8 @@
                 e('tr', { class: 'total' }, e('td', {}, 'Suma'), e('td', { class: 'n' }, String(d.totales.pedidos)), mon(e, d.totales.ventas), mon(e, d.totales.costo), mon(e, d.totales.utilidad))))
               : e('p', { class: 'mu' }, 'No hay ventas en este periodo.'),
             d.periodos.length ? e('p', { class: 'mu' }, `Margen de utilidad bruta: ${d.totales.margen_pct} %. El costo usa los costos unitarios vigentes de los insumos.`) : null),
+            d.combos && d.totales.pedidos ? e('div', { class: 'card tw' }, e('h3', {}, 'Ventas por combo'), e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, th('Combo'), th('Contenido'), th('Pedidos', 1), th('Piezas', 1), th('Ventas', 1))),
+              e('tbody', {}, ...d.combos.map((x) => e('tr', {}, e('td', {}, x.nombre), e('td', {}, x.contenido), e('td', { class: 'n' }, String(x.pedidos)), e('td', { class: 'n' }, String(x.piezas)), mon(e, x.ventas)))))) : null,
             d.top_productos.length ? e('div', { class: 'card tw' }, e('h3', {}, 'Productos más vendidos'), e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, th('Producto'), th('Piezas', 1), th('Ventas', 1))),
               e('tbody', {}, ...d.top_productos.map((x) => e('tr', {}, e('td', {}, x.nombre), e('td', { class: 'n' }, String(x.piezas)), mon(e, x.ventas)))))) : null);
         } else if (tipo === 'estatus') {

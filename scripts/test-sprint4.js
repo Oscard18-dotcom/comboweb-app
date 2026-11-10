@@ -104,9 +104,9 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
     t('10 entradas simultáneas de 5 suman exactamente 50 (sin pérdidas)', (await porNombre(NOM)).stock === 50);
 
     // Integración con pedidos: el descuento por un pedido dispara la alerta
-    const cat = (await call('GET', '/api/catalogo')).j; const P = (n) => cat.productos.find((p) => p.nombre === n).id; const PRES = cat.presentaciones.find((p) => p.nombre === 'Caja mediana').id;
+    const cat = (await call('GET', '/api/catalogo')).j; const P = (n) => cat.productos.find((p) => p.nombre === n).id; const PRES = undefined;
     const comprar = async (items, fecha) => {
-      const ck = await call('POST', '/api/pedidos/checkout', { items, presentacion_id: PRES, fecha, hora: '12:00' }, cliente);
+      const ck = await call('POST', '/api/pedidos/checkout', { items, presentacion_id: PRES, fecha, hora: '12:00', direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle de Prueba', num_ext: '12' } }, cliente);
       if (ck.s !== 201) return ck;
       return call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, undefined, cliente);
     };

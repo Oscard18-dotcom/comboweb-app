@@ -25,7 +25,8 @@
     "start:nube": "node scripts/preparar-nube.js && node src/server.js",
     "test:sprint8": "node scripts/test-sprint8.js",
     "test:sprint9": "node scripts/test-sprint9.js",
-    "test:sprint10": "node scripts/test-sprint10.js"
+    "test:sprint10": "node scripts/test-sprint10.js",
+    "test:combos": "node scripts/test-combos.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

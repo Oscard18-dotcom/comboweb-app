@@ -52,7 +52,8 @@ CREATE TABLE IF NOT EXISTS receta_ingredientes (
 CREATE TABLE IF NOT EXISTS pedidos (
   id              SERIAL PRIMARY KEY,
   cliente_id      INTEGER NOT NULL REFERENCES usuarios(id),
-  presentacion_id INTEGER NOT NULL REFERENCES presentaciones(id),
+  presentacion_id INTEGER REFERENCES presentaciones(id),
+  combo           VARCHAR(20),
   fecha_entrega   DATE NOT NULL,
   hora_entrega    TIME NOT NULL,
   dedicatoria     VARCHAR(120),
@@ -61,6 +62,8 @@ CREATE TABLE IF NOT EXISTS pedidos (
                   CHECK (estatus IN ('Pendiente','En preparación','Listo para entrega','Entregado')),
   creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE pedidos ALTER COLUMN presentacion_id DROP NOT NULL;
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS combo VARCHAR(20);
 CREATE INDEX IF NOT EXISTS pedidos_entrega_idx ON pedidos (fecha_entrega, hora_entrega);
 CREATE INDEX IF NOT EXISTS pedidos_estatus_idx ON pedidos (estatus);
 

@@ -72,9 +72,9 @@ async function arrancar(env, puerto) {
     // Con ventas: se desactiva en lugar de borrarse
     const V = await nuevo(`Test8 Con ventas ${R}`);
     await call('PATCH', `/api/admin/productos/${V.p.id}/activo`, { activo: true }, admin);
-    const cat = (await call('GET', '/api/catalogo')).j; const pres = cat.presentaciones.find((x) => x.nombre === 'Caja mediana').id;
+    const cat = (await call('GET', '/api/catalogo')).j; const pres = undefined;
     const dia = svc.addDays(svc.todayMX(), 25 + Math.floor(Math.random() * 30));
-    const ck = await call('POST', '/api/pedidos/checkout', { items: [{ producto_id: V.p.id, cantidad: 1 }], presentacion_id: pres, fecha: dia, hora: '12:00' }, cli);
+    const ck = await call('POST', '/api/pedidos/checkout', { items: [{ producto_id: V.p.id, cantidad: 1 }], presentacion_id: pres, fecha: dia, hora: '12:00', direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle de Prueba', num_ext: '12' } }, cli);
     const pago = ck.s === 201 ? await call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, undefined, cli) : ck;
     t('preparación: el producto se vende (pedido pagado)', pago.j.estado === 'pagado', JSON.stringify(pago.j));
     r = await call('DELETE', `/api/admin/productos/${V.p.id}`, undefined, admin);
@@ -89,7 +89,7 @@ async function arrancar(env, puerto) {
     /* ===== Modo demostración y publicación ===== */
     r = await call('GET', '/api/salud'); t('/api/salud en desarrollo: modo_demo = false', r.j.estado === 'ok' && r.j.modo_demo === false);
     const html = await (await fetch(B + '/')).text();
-    t('la página trae el aviso de demostración (oculto por defecto) y el script lo muestra', /id="demo"[^>]*hidden/.test(html) && fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8').includes('modo_demo'));
+    t('la página ya no muestra el cartel de “Sitio de demostración”', !/id="demo"/.test(html) && !/Sitio de demostración/.test(html) && !fs.readFileSync(path.join(ROOT, 'public', 'app.js'), 'utf8').includes('#demo') && !/\.demo\{/.test(fs.readFileSync(path.join(ROOT, 'public', 'styles.css'), 'utf8')));
     const prodBase = { NODE_ENV: 'production', PUBLIC_URL: 'https://demo.example.com', TRUST_PROXY: '1', DATABASE_SSL: 'false', PAYMENT_PROVIDER: 'simulado', MAIL_PROVIDER: 'consola', MODO_DEMO: '' };
     let x = run(['-e', "require('./src/config')"], prodBase);
     t('producción con pago simulado SIN MODO_DEMO: se niega a arrancar y explica cómo', x.code !== 0 && /MODO_DEMO=true/.test(x.out), x.out.slice(0, 200));
@@ -111,7 +111,7 @@ async function arrancar(env, puerto) {
     const reg2 = await call('POST', '/api/auth/register', { nombre: 'Persona Anónima', correo: `anon${R}@prueba.test`, password: 'secreta123' }, null, U); clientes.push(reg2.j.usuario && reg2.j.usuario.id);
     t('…cualquier persona puede crear su cuenta', reg2.s === 201 && reg2.j.usuario.rol === 'cliente');
     const dia2 = svc.addDays(svc.todayMX(), 40 + Math.floor(Math.random() * 30));
-    const ck2 = await call('POST', '/api/pedidos/checkout', { items: [{ producto_id: cat.productos[0].id, cantidad: 1 }], presentacion_id: pres, fecha: dia2, hora: '11:00' }, reg2.j.token, U);
+    const ck2 = await call('POST', '/api/pedidos/checkout', { items: [{ producto_id: cat.productos[0].id, cantidad: 1 }], presentacion_id: pres, fecha: dia2, hora: '11:00', direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle de Prueba', num_ext: '12' } }, reg2.j.token, U);
     t('…y puede iniciar un pedido (la pasarela simulada devuelve su página de pago)', ck2.s === 201 && /pago-simulado\.html\?checkout=/.test(ck2.j.url || ''), JSON.stringify(ck2.j));
     const ap = await call('POST', `/api/pagos/simulado/${ck2.j.checkout_id}/aprobar`, undefined, reg2.j.token, U);
     t('…lo "paga" y el pedido queda registrado', ap.j.estado === 'pagado');

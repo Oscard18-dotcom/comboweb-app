@@ -37,7 +37,7 @@ Usuarios de prueba (contraseña = tu `SEED_PASSWORD`): `admin@encombo.test`, `co
 
 
 ## Sprint 3: cómo funciona la compra
-1. El cliente arma su combo (productos, presentación, dedicatoria opcional, fecha y hora). Cada cambio se **cotiza y valida en el servidor** (`POST /api/pedidos/cotizar`): precios siempre de la base de datos, insumos suficientes (ext. 8.a) y horario libre (ext. 10.a, máximo 2 pedidos por horario, con horarios alternativos).
+1. El cliente arma su combo (tipo de combo y productos, dedicatoria opcional, fecha y hora). Cada cambio se **cotiza y valida en el servidor** (`POST /api/pedidos/cotizar`): precios siempre de la base de datos, insumos suficientes (ext. 8.a) y horario libre (ext. 10.a, máximo 2 pedidos por horario, con horarios alternativos).
 2. **Pagar** crea un *checkout* (el combo queda guardado) y lleva al cliente a la pasarela. **Todavía no existe el pedido.**
 3. Cuando la pasarela confirma el cobro, el sistema, en **una sola transacción**: vuelve a validar insumos y horario, crea el pedido con estatus *Pendiente*, descuenta el inventario (con movimientos de salida), registra el pago y genera el comprobante. Si algo falla, no queda nada a medias.
 4. El cliente vuelve al sitio, ve su **comprobante** (se puede imprimir) y sigue su pedido en **Mis pedidos**.
@@ -103,7 +103,7 @@ Con `PAYMENT_PROVIDER=simulado` (valor por defecto) la compra lleva a una pantal
 
 ### Tablero de cocina (HU06) — operador de cocina y administrador
 - Muestra los pedidos **de un día** (por defecto hoy) en cuatro columnas por estatus, en orden de hora, con dedicatoria destacada. Los pedidos de días anteriores que siguen sin entregarse salen marcados como **atrasados**.
-- **Ficha técnica** de cada pedido: cliente, entrega, presentación, combo, dedicatoria e **ingredientes que consume** (según las recetas vigentes). La cocina no ve precios.
+- **Ficha técnica** de cada pedido: cliente, entrega, tipo de combo, dedicatoria e **ingredientes que consume** (según las recetas vigentes). La cocina no ve precios.
 - El estatus solo avanza **hacia adelante y de uno en uno**: Pendiente → En preparación → Listo para entrega → Entregado. Un doble clic, o dos personas pulsando a la vez, **no duplican** el cambio ni el aviso. Si la pantalla estaba desactualizada, avisa con claridad y se pone al día.
 - Cada cambio queda en el **historial** con fecha, hora y quién lo hizo. El tablero se actualiza solo cada 20 segundos.
 
@@ -145,7 +145,7 @@ En **Mis pedidos** y en el comprobante hay una **línea de tiempo** con la fecha
 
 ### Lo nuevo
 - **Mi cuenta:** cualquier persona cambia su contraseña. Al cambiarla (o al restablecerla el administrador) **se cierran todas las demás sesiones** (columna `usuarios.token_version`).
-- **Pantallas del administrador:** *Usuarios* (alta, rol, baja, restablecer contraseña; protege al último administrador) y *Catálogo y precios* (productos y presentaciones).
+- **Pantallas del administrador:** *Usuarios* (alta, rol, baja, restablecer contraseña; protege al último administrador) y *Catálogo y precios* (productos y combos).
 - **Operación:** `GET /api/salud` (para monitoreo del hosting), apagado ordenado con SIGTERM y límite de intentos configurable (`AUTH_RATE_LIMIT`).
 - **Scripts de despliegue:**
   - `npm run crear-admin` crea el primer administrador (`ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD`; con `-- --reiniciar` restablece su contraseña).
@@ -219,7 +219,7 @@ public/                Pantalla del cliente (app.js) y del personal: personal.js
 | POST `/api/auth/register` | Público | Crea una cuenta de **cliente** |
 | POST `/api/auth/login` | Público | Devuelve token (8 h) y datos del usuario |
 | GET `/api/auth/me` | Sesión | Usuario actual |
-| GET `/api/catalogo` | Público | Productos y presentaciones activos |
+| GET `/api/catalogo` | Público | Productos y combos activos |
 | GET/POST `/api/admin/productos` | Admin | Listar / crear producto (nace inactivo) |
 | PUT `/api/admin/productos/:id` | Admin | Editar nombre, descripción y precio |
 | PATCH `/api/admin/productos/:id/activo` | Admin | Activar/desactivar (solo si tiene receta) |
@@ -247,3 +247,14 @@ Recuperación de contraseña por correo, reembolsos desde el sistema, costos his
 - **Pruebas automáticas en GitHub:** `.github/workflows/pruebas.yml` corre todas las pruebas en cada subida y muestra ✓ o ✗ en el repositorio. Usa una base de datos temporal, no la de Neon.
 - Pruebas nuevas: `npm run test:sprint10`.
 - **Correo por Brevo:** nuevo `MAIL_PROVIDER=brevo` (API por HTTPS), que funciona en Render gratis. Variables: `BREVO_API_KEY` y `MAIL_FROM`.
+
+---
+
+## Novedades (combos, sin cajas y ventas por periodo)
+
+- **Combos en lugar de cajas:** el cliente elige primero el tipo de combo: **Combo Pequeño** (1 galleta + 1 café americano), **Combo Mediano** (1 cupcake + 1 brownie + 1 café latte), **Combo Grande** (2 cupcakes + 2 brownies + 2 galletas + 2 cafés latte), **Combo Pareja** (1 café latte + 1 té chai + 1 cupcake + 1 brownie) o **Combo personalizado** (cualquier producto y cantidad). Los combos prearmados se piden por cantidad de combos y su precio es la suma de sus productos. Se definen en `src/services/combos.js`.
+- **El servidor valida el combo:** si se pide un combo prearmado con productos o cantidades que no le corresponden, el pedido se rechaza (`combo_invalido`). Sin indicar combo se toma como personalizado.
+- **Sin tamaño de caja:** ya no se pide ni se cobra presentación y no se descuentan cajas del inventario. Los pedidos anteriores conservan su dato.
+- **Combo guardado en el pedido:** aparece en el comprobante, en Mis pedidos, en la ficha de cocina y en Reportes (tabla "Ventas por combo").
+- **Dashboard con ventas por periodo:** botones Hoy, Esta semana, Este mes, Trimestre, Semestre, Año e Histórico total, con ventas, pedidos, ticket promedio, utilidad, margen y detalle. API: `GET /api/reportes/ventas-periodo?periodo=...` (solo administrador).
+- Pruebas nuevas: `npm run test:combos`.
