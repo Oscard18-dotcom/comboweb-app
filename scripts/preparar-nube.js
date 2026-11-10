@@ -21,6 +21,9 @@ const { isEmail, isPassword } = require('../src/util');
     execFileSync('node', [path.join(__dirname, 'seed.js')], { stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' } });
   } else console.log('✔ La base ya tiene datos: no se vuelven a cargar los de ejemplo.');
 
+  const sembrados = await require('../src/services/combos').sembrar(pool);
+  if (sembrados) console.log(`✔ Combos de ejemplo cargados: ${sembrados}.`);
+
   const hay = (await pool.query("SELECT count(*)::int AS n FROM usuarios WHERE rol='admin' AND activo")).rows[0].n;
   const correo = (process.env.ADMIN_EMAIL || '').trim().toLowerCase(), clave = process.env.ADMIN_PASSWORD || '';
   const reiniciar = process.env.ADMIN_REINICIAR === 'true';

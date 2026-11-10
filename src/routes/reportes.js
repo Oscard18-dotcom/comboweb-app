@@ -61,16 +61,25 @@ router.get('/dashboard', wrap(async (req, res) => {
     pagos_en_revision: rev.rows.length, pagos_revision: rev.rows.map((x) => ({ ...x, total: Number(x.total) })) });
 }));
 
+const combosSvc = require('../services/combos');
 /* Ventas por periodo: ventas, costo de insumos y utilidad bruta */
-const { TODOS } = require('../services/combos');
 async function ventasPorCombo(desde, hasta) {
   const { rows } = await db.query(
-    `SELECT p.combo, count(*)::int AS pedidos, coalesce(sum(p.total),0) AS ventas, coalesce(sum((SELECT sum(i.cantidad) FROM pedido_items i WHERE i.pedido_id=p.id)),0)::int AS piezas
+    `SELECT p.combo, max(p.combo_nombre) AS combo_nombre, count(*)::int AS pedidos, coalesce(sum(p.total),0) AS ventas, coalesce(sum((SELECT sum(i.cantidad) FROM pedido_items i WHERE i.pedido_id=p.id)),0)::int AS piezas
        FROM pedidos p WHERE ${FECHA} BETWEEN $1 AND $2 GROUP BY p.combo`, [desde, hasta]);
   const por = new Map(rows.map((x) => [x.combo, x]));
-  const lista = TODOS.map((c) => { const x = por.get(c.clave); return { clave: c.clave, nombre: c.nombre, contenido: c.items.map((i) => `${i.cantidad} ${i.nombre}`).join(' + ') || 'Cualquier mezcla', pedidos: x ? x.pedidos : 0, piezas: x ? x.piezas : 0, ventas: x ? r2(x.ventas) : 0 }; });
-  const resto = rows.filter((x) => !TODOS.some((c) => c.clave === x.combo)).reduce((a, x) => ({ pedidos: a.pedidos + x.pedidos, piezas: a.piezas + x.piezas, ventas: a.ventas + Number(x.ventas) }), { pedidos: 0, piezas: 0, ventas: 0 });
-  if (resto.pedidos) lista.push({ clave: 'anteriores', nombre: 'Sin combo (pedidos anteriores)', contenido: '—', pedidos: resto.pedidos, piezas: resto.piezas, ventas: r2(resto.ventas) });
+  const fila = (clave, nombre, contenido, x) => ({ clave, nombre, contenido, pedidos: x ? x.pedidos : 0, piezas: x ? x.piezas : 0, ventas: x ? r2(x.ventas) : 0 });
+  const vivos = await combosSvc.listar();
+  const lista = vivos.map((c) => fila(c.clave, c.nombre, c.items.map((i) => `${i.cantidad} ${i.nombre}`).join(' + '), por.get(c.clave)));
+  lista.push(fila('personalizado', 'Combo personalizado', 'Cualquier mezcla', por.get('personalizado')));
+  const conocidos = new Set(['personalizado', ...vivos.map((c) => c.clave)]);
+  let resto = { pedidos: 0, piezas: 0, ventas: 0 };
+  for (const x of rows) {
+    if (conocidos.has(x.combo)) continue;
+    if (x.combo) lista.push(fila(x.combo, `${x.combo_nombre || x.combo} (eliminado)`, '—', x));
+    else resto = { pedidos: resto.pedidos + x.pedidos, piezas: resto.piezas + x.piezas, ventas: resto.ventas + Number(x.ventas) };
+  }
+  if (resto.pedidos) lista.push(fila('anteriores', 'Sin combo (pedidos anteriores)', '—', resto));
   return lista;
 }
 

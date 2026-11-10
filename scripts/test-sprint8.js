@@ -151,10 +151,13 @@ async function arrancar(env, puerto) {
       const cuenta = async (sql) => (await T.query(sql)).rows[0].n;
       t('…hay 10 insumos, 6 productos con receta y 3 presentaciones', await cuenta('SELECT count(*)::int n FROM insumos') === 10 && await cuenta('SELECT count(*)::int n FROM productos') === 6 && await cuenta('SELECT count(*)::int n FROM recetas') === 6 && await cuenta('SELECT count(*)::int n FROM presentaciones') === 3);
       t('…NO se crean cuentas de prueba públicas (@encombo.test): solo el administrador', await cuenta('SELECT count(*)::int n FROM usuarios') === 1 && await cuenta("SELECT count(*)::int n FROM usuarios WHERE correo LIKE '%@encombo.test'") === 0 && await cuenta("SELECT count(*)::int n FROM usuarios WHERE rol='admin'") === 1);
+      t('…se cargan los 4 combos de ejemplo (Pequeño, Mediano, Grande y Pareja)', await cuenta('SELECT count(*)::int n FROM combos') === 4);
+      await T.query('DELETE FROM combos');
       await T.query("DELETE FROM productos WHERE nombre='Cupcake'");
       await T.query("UPDATE insumos SET stock=1 WHERE nombre='Harina'");
       x = run(['scripts/preparar-nube.js'], envT);
       t('repetirlo (reinicio del servidor) es seguro: no vuelve a cargar los datos de ejemplo ni duplica nada', x.code === 0 && /ya tiene datos/.test(x.out) && /Ya hay un administrador/.test(x.out), x.out.slice(-300));
+      t('…los combos que borraste no reaparecen al reiniciar', await cuenta('SELECT count(*)::int n FROM combos') === 0);
       t('…lo que borraste no reaparece y tus cambios se conservan', await cuenta("SELECT count(*)::int n FROM productos WHERE nombre='Cupcake'") === 0 && Number((await T.query("SELECT stock FROM insumos WHERE nombre='Harina'")).rows[0].stock) === 1 && await cuenta('SELECT count(*)::int n FROM usuarios') === 1);
       x = run(['scripts/preparar-nube.js'], { ...envT, ADMIN_EMAIL: 'otro@prueba.test', ADMIN_PASSWORD: 'otra-clave-1234' });
       t('…y una variable ADMIN_EMAIL distinta no crea un segundo administrador', await cuenta("SELECT count(*)::int n FROM usuarios WHERE rol='admin'") === 1);

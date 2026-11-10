@@ -6,7 +6,53 @@ const { wrap, isEmail, isPassword, isText, parsePrice, paramId } = require('../u
 
 router.use(auth, roles('admin'));
 
+const combosSvc = require('../services/combos');
 const dup = (res) => res.status(409).json({ error: 'Ya existe un registro con ese nombre.' });
+
+/* ---------- Combos: crear, editar, deshabilitar y eliminar ---------- */
+router.get('/combos', wrap(async (req, res) => { res.json({ combos: await combosSvc.listar() }); }));
+
+const enTransaccion = async (fn) => {
+  const c = await db.pool.connect();
+  try { await c.query('BEGIN'); const r = await fn(c); await c.query('COMMIT'); return r; }
+  catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; }
+  finally { c.release(); }
+};
+const errCombo = (res, msg) => res.status(/Ya existe/.test(msg) ? 409 : 400).json({ error: msg });
+
+router.post('/combos', wrap(async (req, res) => {
+  const v = await combosSvc.validarEntrada(db, req.body || {}, null);
+  if (v.error) return errCombo(res, v.error);
+  const id = await enTransaccion((c) => combosSvc.crear(c, v.datos));
+  res.status(201).json({ id });
+}));
+
+router.put('/combos/:id', wrap(async (req, res) => {
+  const id = paramId(req);
+  if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
+  if (!(await db.query('SELECT 1 FROM combos WHERE id=$1', [id])).rows[0]) return res.status(404).json({ error: 'Combo no encontrado.' });
+  const v = await combosSvc.validarEntrada(db, req.body || {}, id);
+  if (v.error) return errCombo(res, v.error);
+  await enTransaccion((c) => combosSvc.reemplazar(c, id, v.datos));
+  res.json({ ok: true });
+}));
+
+router.patch('/combos/:id/activo', wrap(async (req, res) => {
+  const id = paramId(req);
+  if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
+  if (typeof (req.body || {}).activo !== 'boolean') return res.status(400).json({ error: 'Indica si el combo debe estar activo.' });
+  const r = await db.query('UPDATE combos SET activo=$2 WHERE id=$1', [id, req.body.activo]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Combo no encontrado.' });
+  res.json({ ok: true });
+}));
+
+router.delete('/combos/:id', wrap(async (req, res) => {
+  const id = paramId(req);
+  if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
+  const r = await db.query('DELETE FROM combos WHERE id=$1', [id]);
+  if (!r.rowCount) return res.status(404).json({ error: 'Combo no encontrado.' });
+  res.json({ ok: true });
+}));
 
 /* ---------- Productos (HU12) ---------- */
 router.get('/productos', wrap(async (req, res) => {
@@ -67,6 +113,10 @@ router.delete('/productos/:id', wrap(async (req, res) => {
     await c.query('BEGIN');
     const p = (await c.query('SELECT id,nombre FROM productos WHERE id=$1 FOR UPDATE', [id])).rows[0];
     if (!p) { await c.query('ROLLBACK'); return res.status(404).json({ error: 'Producto no encontrado.' }); }
+    if ((await c.query('SELECT 1 FROM combo_items WHERE producto_id=$1 LIMIT 1', [id])).rows[0]) {
+      await c.query('ROLLBACK');
+      return res.status(409).json({ error: 'Este producto forma parte de un combo. Quítalo del combo primero.' });
+    }
     const vendido = (await c.query('SELECT 1 FROM pedido_items WHERE producto_id=$1 LIMIT 1', [id])).rows[0];
     if (vendido) {
       await c.query('UPDATE productos SET activo=false WHERE id=$1', [id]);

@@ -105,10 +105,10 @@ async function validar(q, b = {}) {
     const prods = (await q.query('SELECT id,nombre,precio FROM productos WHERE activo AND id = ANY($1)', [[...items.keys()]])).rows;
     if (prods.length !== items.size) err('items', 'producto_no_disponible', 'Alguno de los productos ya no está disponible.');
     if (prods.length === items.size) {
-      const combo = combosSvc.porClave(b.combo == null || b.combo === '' ? 'personalizado' : String(b.combo));
-      const porNombre = new Map(prods.map((p) => [p.nombre, items.get(p.id)]));
+      const combo = await combosSvc.porClave(q, b.combo == null || b.combo === '' ? 'personalizado' : String(b.combo));
       if (!combo) err('combo', 'combo_invalido', 'Elige un tipo de combo válido.');
-      else if (combo.items.length && !combosSvc.multiplo(combo, porNombre)) err('combo', 'combo_invalido', `Los productos no corresponden al ${combo.nombre}.`);
+      else if (combo.clave !== 'personalizado' && !combo.disponible) err('combo', 'combo_invalido', `El ${combo.nombre} ya no está disponible.`);
+      else if (combo.items.length && !combosSvc.multiplo(combo, items)) err('combo', 'combo_invalido', `Los productos no corresponden al ${combo.nombre}.`);
       comboElegido = combo;
       const lineas = prods.map((p) => ({ producto_id: p.id, nombre: p.nombre, cantidad: items.get(p.id), precio_unitario: Number(p.precio) }));
       const totalC = lineas.reduce((a, l) => a + cents(l.precio_unitario) * l.cantidad, 0);
@@ -129,7 +129,7 @@ async function crearCheckout(user, body, proveedor) {
   if (v.errores.length || dv.errores.length) return { errores: [...v.errores, ...dv.errores] };
   const d = v.detalle;
   const payload = { items: d.lineas.map((l) => ({ producto_id: l.producto_id, cantidad: l.cantidad })), lineas: d.lineas,
-    combo: d.combo && d.combo.clave, fecha: d.fecha, hora: d.hora, dedicatoria: d.dedicatoria, direccion: dv.dir };
+    combo: d.combo && d.combo.clave, combo_nombre: d.combo && d.combo.nombre, fecha: d.fecha, hora: d.hora, dedicatoria: d.dedicatoria, direccion: dv.dir };
   const { rows } = await db.query(
     "INSERT INTO checkouts(cliente_id,payload,total,proveedor,expira_en) VALUES($1,$2,$3,$4, now() + interval '35 minutes') RETURNING id",
     [user.id, JSON.stringify(payload), d.total, proveedor.nombre]);
@@ -172,10 +172,10 @@ async function confirmarPago(checkoutId, { proveedor, referencia, monto, moneda 
     if (faltas.length) return aRevision(faltas[0].codigo);
 
     const pedido = (await c.query(
-      `INSERT INTO pedidos(cliente_id,combo,fecha_entrega,hora_entrega,dedicatoria,total,estatus,
+      `INSERT INTO pedidos(cliente_id,combo,combo_nombre,fecha_entrega,hora_entrega,dedicatoria,total,estatus,
                            dir_cp,dir_colonia,dir_calle,dir_num_ext,dir_num_int,dir_municipio,dir_estado,dir_referencias)
-       VALUES($1,$2,$3,$4,$5,$6,'Pendiente',$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
-      [ck.cliente_id, p.combo || 'personalizado', p.fecha, p.hora, p.dedicatoria, ck.total,
+       VALUES($1,$2,$3,$4,$5,$6,$7,'Pendiente',$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+      [ck.cliente_id, p.combo || 'personalizado', p.combo_nombre || 'Combo personalizado', p.fecha, p.hora, p.dedicatoria, ck.total,
         dir.cp || null, dir.colonia || null, dir.calle || null, dir.num_ext || null, dir.num_int || null, dir.municipio || null, dir.estado || null, dir.referencias || null])).rows[0];
     for (const l of p.lineas)
       await c.query('INSERT INTO pedido_items(pedido_id,producto_id,cantidad,precio_unitario) VALUES($1,$2,$3,$4)', [pedido.id, l.producto_id, l.cantidad, l.precio_unitario]);
@@ -199,11 +199,10 @@ async function confirmarPago(checkoutId, { proveedor, referencia, monto, moneda 
 }
 
 /* ---------- Consultas de pedidos ---------- */
-const nombreCombo = (clave) => { const c = clave && combosSvc.porClave(clave); return c ? { clave: c.clave, nombre: c.nombre } : null; };
 const folio = (id) => 'EC-' + String(id).padStart(4, '0');
 async function detallePedido(id) {
   const p = (await db.query(
-    `SELECT p.id,p.cliente_id,p.estatus,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,p.dedicatoria,p.total,p.creado_en,p.combo,
+    `SELECT p.id,p.cliente_id,p.estatus,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,p.dedicatoria,p.total,p.creado_en,p.combo,p.combo_nombre,
             pr.nombre AS presentacion, u.nombre AS cliente, u.correo, ${direccion.COLS}
        FROM pedidos p LEFT JOIN presentaciones pr ON pr.id=p.presentacion_id JOIN usuarios u ON u.id=p.cliente_id WHERE p.id=$1`, [id])).rows[0];
   if (!p) return null;
@@ -215,18 +214,18 @@ async function detallePedido(id) {
   const sumaItems = items.reduce((a, i) => a + cents(i.subtotal), 0);
   return { id: p.id, cliente_id: p.cliente_id, folio: folio(p.id), estatus: p.estatus, cliente: { nombre: p.cliente, correo: p.correo },
     entrega: { fecha: p.fecha, hora: p.hora, direccion: direccion.desdeFila(p) }, dedicatoria: p.dedicatoria,
-    presentacion: p.presentacion ? { nombre: p.presentacion, precio: (cents(p.total) - sumaItems) / 100 } : null, combo: nombreCombo(p.combo), items, total: Number(p.total), pago, historial, creado_en: p.creado_en };
+    presentacion: p.presentacion ? { nombre: p.presentacion, precio: (cents(p.total) - sumaItems) / 100 } : null, combo: p.combo_nombre ? { clave: p.combo, nombre: p.combo_nombre } : null, items, total: Number(p.total), pago, historial, creado_en: p.creado_en };
 }
 async function pedidosDe(clienteId) {
   const { rows } = await db.query(
-    `SELECT p.id,p.estatus,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,p.dedicatoria,p.total,p.creado_en,p.combo,pr.nombre AS presentacion, ${direccion.COLS},
+    `SELECT p.id,p.estatus,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,p.dedicatoria,p.total,p.creado_en,p.combo,p.combo_nombre,pr.nombre AS presentacion, ${direccion.COLS},
             (SELECT json_agg(json_build_object('nombre',pd.nombre,'cantidad',i.cantidad) ORDER BY pd.nombre)
                FROM pedido_items i JOIN productos pd ON pd.id=i.producto_id WHERE i.pedido_id=p.id) AS items,
             (SELECT json_agg(json_build_object('estatus',h.estatus,'creado_en',h.creado_en) ORDER BY h.id)
                FROM pedido_estatus_historial h WHERE h.pedido_id=p.id) AS historial
        FROM pedidos p LEFT JOIN presentaciones pr ON pr.id=p.presentacion_id WHERE p.cliente_id=$1 ORDER BY p.id DESC`, [clienteId]);
   return rows.map((r) => {
-    const o = { ...r, direccion: direccion.desdeFila(r), folio: folio(r.id), total: Number(r.total), combo: nombreCombo(r.combo) };
+    const o = { ...r, direccion: direccion.desdeFila(r), folio: folio(r.id), total: Number(r.total), combo: r.combo_nombre ? { clave: r.combo, nombre: r.combo_nombre } : null };
     for (const k of Object.keys(o)) if (k.startsWith('dir_')) delete o[k];   // las columnas internas no salen de la API
     return o;
   });

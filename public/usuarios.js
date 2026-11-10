@@ -78,9 +78,71 @@
     const ok = (t) => { msg.textContent = t; err.replaceChildren(); };
     const mal = (er) => { msg.textContent = ''; err.replaceChildren(e('div', {}, er.message)); };
     const precio = (v) => e('input', { type: 'number', min: '0', step: '0.01', value: String(v), 'aria-label': 'Precio', style: 'width:100px' });
+    /* ---------- Combos: crear, editar, deshabilitar y eliminar ---------- */
+    let editor = null, confirmarId = null, ultimosCombos = [], ultimosProds = [];
+    const resumen = (c) => c.items.map((x) => `${x.cantidad} ${x.nombre}`).join(' + ');
+    function formulario(prodsAct) {
+      const caja = e('div', { class: 'errbox', role: 'alert' });
+      const nombre = e('input', { type: 'text', maxlength: '40', value: editor.nombre, 'aria-label': 'Nombre del combo', placeholder: 'Ej. Combo Fiesta' });
+      const desc = e('input', { type: 'text', maxlength: '120', value: editor.descripcion, 'aria-label': 'Descripción del combo', placeholder: 'Descripción corta (opcional)' });
+      const total = e('strong', {}, '');
+      const filas = e('div', {});
+      const elegibles = prodsAct.filter((x) => x.activo || editor.filas.some((f) => f.pid === x.id));
+      const calcular = () => { const t = editor.filas.reduce((a, f) => { const pr = prodsAct.find((x) => x.id === f.pid); return a + (pr ? Number(pr.precio) * (Number(f.cant) || 0) : 0); }, 0); total.textContent = costo(t); };
+      function pintarFilas() {
+        filas.replaceChildren(...editor.filas.map((f, i) => {
+          const sel = e('select', { 'aria-label': `Producto ${i + 1}`, onchange: () => { f.pid = Number(sel.value); calcular(); } },
+            e('option', { value: '' }, '— Elige un producto —'), ...elegibles.map((x) => e('option', { value: String(x.id) }, `${x.nombre} (${costo(x.precio)})${x.activo ? '' : ' · inactivo'}`)));
+          sel.value = f.pid ? String(f.pid) : '';
+          const cant = e('input', { type: 'number', min: '1', max: '50', step: '1', value: String(f.cant), 'aria-label': `Cantidad del producto ${i + 1}`, style: 'width:80px', oninput: () => { f.cant = cant.value; calcular(); } });
+          return e('div', { class: 'acc', style: 'display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap' }, sel, cant,
+            e('button', { class: 'mini', type: 'button', 'aria-label': `Quitar producto ${i + 1}`, onclick: () => { editor.filas.splice(i, 1); pintarFilas(); calcular(); } }, 'Quitar'));
+        }));
+        calcular();
+      }
+      pintarFilas();
+      const guardar = e('button', { class: 'btn', type: 'submit' }, editor.id ? 'Guardar cambios' : 'Crear combo');
+      return e('form', { class: 'card', 'aria-label': editor.id ? 'Editar combo' : 'Nuevo combo', novalidate: true,
+        onsubmit: async (ev) => {
+          ev.preventDefault(); caja.replaceChildren(); guardar.disabled = true;
+          editor.nombre = nombre.value; editor.descripcion = desc.value;
+          try {
+            const body = { nombre: nombre.value.trim(), descripcion: desc.value.trim(), items: editor.filas.map((f) => ({ producto_id: f.pid, cantidad: Number(f.cant) })) };
+            await api(editor.id ? '/admin/combos/' + editor.id : '/admin/combos', { method: editor.id ? 'PUT' : 'POST', body });
+            const era = editor.id; editor = null; ok(era ? 'Combo actualizado.' : 'Combo creado.'); await cargar();
+          } catch (er) { caja.replaceChildren(e('div', {}, er.message)); guardar.disabled = false; }
+        } },
+        e('h4', {}, editor.id ? 'Editar combo' : 'Nuevo combo'), caja,
+        e('label', {}, 'Nombre', nombre), e('label', {}, 'Descripción', desc),
+        e('p', { class: 'mu' }, 'Productos y cantidades del combo (el cliente podrá pedirlo en múltiplos: 1, 2, 3 combos…).'), filas,
+        e('button', { class: 'mini', type: 'button', onclick: () => { editor.filas.push({ pid: 0, cant: 1 }); pintarFilas(); } }, '+ Agregar producto'),
+        e('p', {}, 'Precio del combo (suma de sus productos): ', total),
+        e('div', { class: 'acc' }, guardar, e('button', { class: 'btn s', type: 'button', onclick: () => { editor = null; pintarCombos(ultimosCombos, ultimosProds); } }, 'Cancelar')));
+    }
+    function pintarCombos(combos, prodsAct) {
+      ultimosCombos = combos; ultimosProds = prodsAct;
+      const nuevo = e('button', { class: 'btn', type: 'button', onclick: () => { editor = { id: null, nombre: '', descripcion: '', filas: [{ pid: 0, cant: 1 }] }; pintarCombos(combos, prodsAct); } }, '+ Nuevo combo');
+      const fila = (c) => {
+        const acciones = confirmarId === c.id
+          ? [e('span', {}, '¿Eliminar este combo? '), e('button', { class: 'mini', type: 'button', onclick: async () => { try { await api('/admin/combos/' + c.id, { method: 'DELETE' }); confirmarId = null; ok(`${c.nombre} eliminado.`); await cargar(); } catch (er) { mal(er); } } }, 'Sí, eliminar'),
+            e('button', { class: 'mini', type: 'button', onclick: () => { confirmarId = null; pintarCombos(combos, prodsAct); } }, 'No')]
+          : [e('button', { class: 'mini', type: 'button', 'aria-label': `Editar ${c.nombre}`, onclick: () => { editor = { id: c.id, nombre: c.nombre, descripcion: c.descripcion || '', filas: c.items.map((x) => ({ pid: x.id, cant: x.cantidad })) }; confirmarId = null; pintarCombos(combos, prodsAct); } }, 'Editar'),
+            e('button', { class: 'mini', type: 'button', 'aria-label': `${c.activo ? 'Deshabilitar' : 'Habilitar'} ${c.nombre}`, onclick: async () => { try { await api(`/admin/combos/${c.id}/activo`, { method: 'PATCH', body: { activo: !c.activo } }); ok(`${c.nombre} ${c.activo ? 'deshabilitado' : 'habilitado'}.`); await cargar(); } catch (er) { mal(er); } } }, c.activo ? 'Deshabilitar' : 'Habilitar'),
+            e('button', { class: 'mini', type: 'button', 'aria-label': `Eliminar ${c.nombre}`, onclick: () => { confirmarId = c.id; pintarCombos(combos, prodsAct); } }, 'Eliminar')];
+        const estado = !c.activo ? chipC('Deshabilitado', '#7D756B') : c.disponible ? chipC('Activo', '#3E5B3A') : chipC('Sin disponibilidad (producto inactivo)', '#8A4B2A');
+        return e('tr', {}, e('td', {}, c.nombre), e('td', {}, resumen(c)), e('td', {}, costo(c.precio)), e('td', {}, estado), e('td', { class: 'acc' }, ...acciones));
+      };
+      combosT.replaceChildren(
+        e('div', { class: 'acc', style: 'margin-bottom:8px' }, nuevo),
+        ...(editor ? [formulario(prodsAct)] : []),
+        e('table', {}, e('thead', {}, e('tr', {}, ['Combo', 'Contenido', 'Precio (MXN)', 'Estado', 'Acciones'].map((x) => e('th', {}, x)))),
+          e('tbody', {}, ...combos.map(fila),
+            e('tr', {}, e('td', {}, 'Combo personalizado'), e('td', {}, 'El cliente elige los productos'), e('td', {}, 'Suma de lo que elija'), e('td', {}, chipC('Siempre disponible', '#3E5B3A')), e('td', {}, '—')))),
+        e('p', { class: 'mu' }, 'El precio de cada combo es la suma de los precios de sus productos. Un combo deshabilitado no se ofrece a los clientes; los pedidos ya hechos conservan el nombre con el que se compraron. Un producto que está en un combo no se puede eliminar hasta quitarlo del combo.'));
+    }
     async function cargar() {
       try {
-        const [p, ct] = await Promise.all([api('/admin/productos'), api('/catalogo')]);
+        const p = await api('/admin/productos');
         prods.replaceChildren(e('table', {}, e('thead', {}, e('tr', {}, ['Producto', 'Precio de venta (MXN)', 'Receta', 'Estado', 'Acciones'].map((x) => e('th', {}, x)))),
           e('tbody', {}, p.productos.map((x) => {
             const inp = precio(x.precio);
@@ -89,9 +151,8 @@
                 e('button', { class: 'mini', type: 'button', 'aria-label': `Guardar precio de ${x.nombre}`, onclick: async () => { try { await api('/admin/productos/' + x.id, { method: 'PUT', body: { nombre: x.nombre, descripcion: x.descripcion, precio: inp.value } }); ok(`Precio de ${x.nombre} guardado.`); await cargar(); } catch (er) { mal(er); } } }, 'Guardar precio'),
                 e('button', { class: 'mini', type: 'button', onclick: async () => { try { await api(`/admin/productos/${x.id}/activo`, { method: 'PATCH', body: { activo: !x.activo } }); ok(`${x.nombre} ${x.activo ? 'desactivado' : 'activado'}.`); await cargar(); } catch (er) { mal(er); } } }, x.activo ? 'Desactivar' : 'Activar')));
           }))));
-        combosT.replaceChildren(e('table', {}, e('thead', {}, e('tr', {}, ['Combo', 'Contenido', 'Precio (MXN)'].map((x) => e('th', {}, x)))),
-          e('tbody', {}, ...ct.combos.map((c) => e('tr', {}, e('td', {}, c.nombre), e('td', {}, c.items.map((x) => `${x.cantidad} ${x.nombre}`).join(' + ')), e('td', {}, '$' + c.precio.toFixed(2)))), e('tr', {}, e('td', {}, ct.combo_personalizado.nombre), e('td', {}, 'El cliente elige los productos'), e('td', {}, 'Suma de lo que elija')))),
-          e('p', { class: 'mu' }, 'El precio de cada combo es la suma de los precios de sus productos: al cambiar el precio de un producto, el combo se actualiza solo.'));
+        const cm = await api('/admin/combos');
+        pintarCombos(cm.combos, p.productos);
       } catch (er) { mal(er); }
     }
     cargar();

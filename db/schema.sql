@@ -245,3 +245,31 @@ CREATE TABLE IF NOT EXISTS recuperaciones_password (
   creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS recuperaciones_usuario_idx ON recuperaciones_password (usuario_id, creado_en);
+
+-- Combos que el administrador crea, edita, deshabilita o elimina (el "combo personalizado" es fijo y no se guarda aquí)
+CREATE TABLE IF NOT EXISTS combos (
+  id          SERIAL PRIMARY KEY,
+  clave       VARCHAR(40) NOT NULL UNIQUE,
+  nombre      VARCHAR(40) NOT NULL,
+  descripcion VARCHAR(120),
+  activo      BOOLEAN NOT NULL DEFAULT true,
+  creado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS combos_nombre_idx ON combos (lower(nombre));
+CREATE TABLE IF NOT EXISTS combo_items (
+  combo_id    INTEGER NOT NULL REFERENCES combos(id) ON DELETE CASCADE,
+  producto_id INTEGER NOT NULL REFERENCES productos(id),
+  cantidad    INTEGER NOT NULL CHECK (cantidad BETWEEN 1 AND 50),
+  PRIMARY KEY (combo_id, producto_id)
+);
+CREATE TABLE IF NOT EXISTS ajustes (
+  clave VARCHAR(40) PRIMARY KEY,
+  valor TEXT NOT NULL
+);
+-- El pedido guarda el nombre que tenía el combo al comprarse (así el historial no cambia si luego se renombra o elimina)
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS combo_nombre VARCHAR(40);
+-- La clave de un combo creado por el administrador puede ser más larga que las de ejemplo
+ALTER TABLE pedidos ALTER COLUMN combo TYPE VARCHAR(40);
+UPDATE pedidos SET combo_nombre = CASE combo WHEN 'pequeno' THEN 'Combo Pequeño' WHEN 'mediano' THEN 'Combo Mediano' WHEN 'grande' THEN 'Combo Grande'
+                                             WHEN 'pareja' THEN 'Combo Pareja' WHEN 'personalizado' THEN 'Combo personalizado' END
+ WHERE combo_nombre IS NULL AND combo IN ('pequeno', 'mediano', 'grande', 'pareja', 'personalizado');

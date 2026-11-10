@@ -48,6 +48,7 @@ const USUARIOS = [['Administración EN COMBO', 'admin@encombo.test', 'admin'], [
       for (const [n, correo, rol] of USUARIOS)
         await c.query('INSERT INTO usuarios(nombre,correo,password_hash,rol) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING', [n, correo, hash, rol]);
     }
+    await require('../src/services/combos').sembrar(c);
     await c.query('COMMIT');
     console.log('Datos iniciales cargados (insumos, productos con receta y presentaciones de ejemplo).' + (produccion ? '' : ' Cuentas de prueba: admin@, cocina@, almacen@ y cliente@encombo.test'));
   } catch (e) {

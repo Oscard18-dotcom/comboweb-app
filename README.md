@@ -252,9 +252,30 @@ Recuperación de contraseña por correo, reembolsos desde el sistema, costos his
 
 ## Novedades (combos, sin cajas y ventas por periodo)
 
-- **Combos en lugar de cajas:** el cliente elige primero el tipo de combo: **Combo Pequeño** (1 galleta + 1 café americano), **Combo Mediano** (1 cupcake + 1 brownie + 1 café latte), **Combo Grande** (2 cupcakes + 2 brownies + 2 galletas + 2 cafés latte), **Combo Pareja** (1 café latte + 1 té chai + 1 cupcake + 1 brownie) o **Combo personalizado** (cualquier producto y cantidad). Los combos prearmados se piden por cantidad de combos y su precio es la suma de sus productos. Se definen en `src/services/combos.js`.
+- **Combos en lugar de cajas:** el cliente elige primero el tipo de combo: **Combo Pequeño** (1 galleta + 1 café americano), **Combo Mediano** (1 cupcake + 1 brownie + 1 café latte), **Combo Grande** (2 cupcakes + 2 brownies + 2 galletas + 2 cafés latte), **Combo Pareja** (1 café latte + 1 té chai + 1 cupcake + 1 brownie) o **Combo personalizado** (cualquier producto y cantidad). Los combos prearmados se piden por cantidad de combos y su precio es la suma de sus productos. Ya no están fijos en el código: el administrador los administra desde **Catálogo y precios → Combos** (ver abajo); los cuatro de ejemplo se cargan una sola vez.
 - **El servidor valida el combo:** si se pide un combo prearmado con productos o cantidades que no le corresponden, el pedido se rechaza (`combo_invalido`). Sin indicar combo se toma como personalizado.
 - **Sin tamaño de caja:** ya no se pide ni se cobra presentación y no se descuentan cajas del inventario. Los pedidos anteriores conservan su dato.
 - **Combo guardado en el pedido:** aparece en el comprobante, en Mis pedidos, en la ficha de cocina y en Reportes (tabla "Ventas por combo").
 - **Dashboard con ventas por periodo:** menú con Día (hoy), Semana, Mes, Año, Histórico total, Últimos 30 días y Elegir fechas (dos calendarios desde / hasta). Muestra ventas, pedidos, ticket promedio, utilidad, margen y detalle. API: `GET /api/reportes/ventas-periodo?periodo=hoy|semana|mes|anio|total|ultimos30|rango` (con `desde` y `hasta` para `rango`; solo administrador).
 - Pruebas nuevas: `npm run test:combos`.
+
+## Administrar combos (crear, editar, deshabilitar y eliminar)
+
+En **Catálogo y precios → Combos** (solo administrador):
+
+- **+ Nuevo combo:** nombre (3 a 40 caracteres, único), descripción opcional y de 1 a 10 productos con su cantidad (1 a 50). El precio es la suma de sus productos.
+- **Editar:** cambia nombre, descripción, productos y cantidades. Los pedidos ya hechos conservan el nombre y la receta con la que se compraron.
+- **Deshabilitar / Habilitar:** un combo deshabilitado (o con algún producto inactivo) no se ofrece al cliente y el servidor rechaza pedirlo.
+- **Eliminar:** pide confirmación. El historial no se pierde: Reportes lo muestra como “(eliminado)”.
+- El **Combo personalizado** es fijo (no se edita ni se elimina). Un producto que está dentro de un combo no puede eliminarse hasta quitarlo del combo.
+- Los combos de ejemplo se cargan **una sola vez** (marca en la tabla `ajustes`): si el administrador borra uno, no reaparece al reiniciar.
+
+| Ruta | Quién | Para qué |
+|---|---|---|
+| GET `/api/admin/combos` | Administrador | Lista todos (también deshabilitados) con contenido, precio y estado |
+| POST `/api/admin/combos` | Administrador | Crea un combo |
+| PUT `/api/admin/combos/:id` | Administrador | Edita nombre, descripción y productos |
+| PATCH `/api/admin/combos/:id/activo` | Administrador | Habilita o deshabilita |
+| DELETE `/api/admin/combos/:id` | Administrador | Elimina |
+
+Pruebas: `npm run test:combos-admin`.

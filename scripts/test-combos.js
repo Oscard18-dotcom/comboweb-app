@@ -40,7 +40,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     t('catálogo: combos Pequeño, Mediano, Grande y Pareja (más el personalizado) y sin presentaciones', nombres.join() === 'Combo Pequeño,Combo Mediano,Combo Grande,Combo Pareja' && cat.combo_personalizado.nombre === 'Combo personalizado' && cat.presentaciones === undefined, nombres.join());
     const pr = (n) => Number(P(n).precio);
     t('catálogo: el precio de cada combo es la suma de sus productos', cat.combos.every((c) => Math.abs(c.precio - c.items.reduce((a, x) => a + x.cantidad * pr(x.nombre), 0)) < 0.005));
-    t('catálogo: contenido de cada combo', cat.combos.find((c) => c.clave === 'pequeno').items.map((x) => x.cantidad + x.nombre).join() === '1Galleta,1Café americano' && cat.combos.find((c) => c.clave === 'grande').items.every((x) => x.cantidad === 2) && cat.combos.find((c) => c.clave === 'pareja').items.length === 4);
+    t('catálogo: contenido de cada combo', cat.combos.find((c) => c.clave === 'pequeno').items.map((x) => x.cantidad + x.nombre).sort().join() === '1Café americano,1Galleta' && cat.combos.find((c) => c.clave === 'grande').items.every((x) => x.cantidad === 2) && cat.combos.find((c) => c.clave === 'pareja').items.length === 4);
 
     let r = await cot('pequeno', [['Galleta', 1], ['Café americano', 1]]);
     t('Combo Pequeño con sus productos → válido, total = suma, sin caja y con el combo en el detalle', r.s === 200 && r.j.ok && r.j.detalle.total === 45 && r.j.detalle.combo.clave === 'pequeno' && r.j.detalle.presentacion === undefined, JSON.stringify(r.j).slice(0, 250));

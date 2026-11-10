@@ -255,7 +255,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const filaT = (txt) => [...w.document.querySelectorAll('#staff tbody tr')].find((f) => f.textContent.includes(txt));
     const botonF = (txt, b) => [...filaT(txt).querySelectorAll('button')].find((x) => x.textContent === b);
     t('catálogo: lista productos y combos con su precio', await until(() => w.document.querySelectorAll('#staff table').length === 2 && filaT(`UI4 Prod ${R}`) && !/Caja chica|Presentaciones/.test(w.document.querySelector('#staff').textContent)));
-    t('catálogo del administrador: lista los 4 combos y el personalizado con precios', ['Combo Pequeño', 'Combo Mediano', 'Combo Grande', 'Combo Pareja', 'Combo personalizado'].every((n) => !!filaT(n)) && /2 Cupcake \+ 2 Brownie/.test(filaT('Combo Grande').textContent));
+    t('catálogo del administrador: lista los 4 combos y el personalizado con precios', ['Combo Pequeño', 'Combo Mediano', 'Combo Grande', 'Combo Pareja', 'Combo personalizado'].every((n) => !!filaT(n)) && /2 Brownie \+ 2 Café latte \+ 2 Cupcake \+ 2 Galleta/.test(filaT('Combo Grande').textContent));
     cambiar(w, filaT(`UI4 Prod ${R}`).querySelector('input'), '44.5'); botonF(`UI4 Prod ${R}`, 'Guardar precio').click();
     t('catálogo: cambiar el precio de un producto se guarda', await until(async () => Number((await db.query('SELECT precio FROM productos WHERE nombre=$1', [`UI4 Prod ${R}`])).rows[0].precio) === 44.5) && await until(() => /guardado/.test($('#staff .okmsg').textContent)));
     cambiar(w, filaT(`UI4 Prod ${R}`).querySelector('input'), '-5'); botonF(`UI4 Prod ${R}`, 'Guardar precio').click();
@@ -264,6 +264,45 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('catálogo: desactivar un producto lo quita del catálogo público', await until(() => /Inactivo/.test(filaT(`UI4 Prod ${R}`).textContent)) && !(await (await fetch(B + '/api/catalogo')).json()).productos.some((p) => p.nombre.startsWith('UI4 Prod')));
     botonF(`UI4 Prod ${R}`, 'Activar').click();
     t('catálogo: volver a activarlo lo publica', await until(async () => (await (await fetch(B + '/api/catalogo')).json()).productos.some((p) => p.nombre.startsWith('UI4 Prod'))));
+
+    /* ---------- ADMIN: administrar combos (crear, editar, deshabilitar, eliminar) ---------- */
+    const btnTxt = (txt) => [...w.document.querySelectorAll('#staff button')].find((b) => b.textContent === txt);
+    const nomC = `UI Combo ${R}`.slice(0, 40), nomC2 = `UI Editado ${R}`.slice(0, 40);
+    const combosBD = async (n) => (await db.query('SELECT c.id,c.activo,c.nombre,(SELECT json_agg(json_build_array(i.producto_id,i.cantidad) ORDER BY i.producto_id) FROM combo_items i WHERE i.combo_id=c.id) AS items FROM combos c WHERE c.nombre=$1', [n])).rows[0];
+    t('combos: cada combo tiene Editar, Deshabilitar y Eliminar, y hay botón "+ Nuevo combo"', !!btnTxt('+ Nuevo combo') && ['Editar', 'Deshabilitar', 'Eliminar'].every((b) => [...filaT('Combo Pequeño').querySelectorAll('button')].some((x) => x.textContent === b)) && !filaT('Combo personalizado').querySelector('button'));
+    btnTxt('+ Nuevo combo').click();
+    const formN = await until(() => w.document.querySelector('#staff form[aria-label="Nuevo combo"]'));
+    t('combos: "+ Nuevo combo" abre el formulario', !!formN);
+    enviarForm(w, formN);
+    t('combos: crear sin nombre ni productos muestra el error del servidor', await until(() => /nombre del combo/i.test($('#staff form .errbox').textContent)));
+    cambiar(w, w.document.querySelector('[aria-label="Nombre del combo"]'), nomC);
+    const selP = w.document.querySelector('[aria-label="Producto 1"]'); const prodG = (await db.query("SELECT id FROM productos WHERE nombre='Galleta'")).rows[0].id, prodB = (await db.query("SELECT id FROM productos WHERE nombre='Brownie'")).rows[0].id;
+    cambiar(w, selP, String(prodG)); cambiar(w, w.document.querySelector('[aria-label="Cantidad del producto 1"]'), '2');
+    btnTxt('+ Agregar producto').click();
+    cambiar(w, w.document.querySelector('[aria-label="Producto 2"]'), String(prodB));
+    t('combos: el formulario calcula el precio como suma de productos', await until(() => /\$/.test(w.document.querySelector('#staff form strong').textContent)) && w.document.querySelector('#staff form strong').textContent.length > 2);
+    enviarForm(w, w.document.querySelector('#staff form[aria-label="Nuevo combo"]'));
+    t('combos: crear guarda el combo con sus productos y cantidades', await until(async () => { const c = await combosBD(nomC); return c && c.activo && JSON.stringify(c.items) === JSON.stringify([[prodG, 2], [prodB, 1]].sort((a, b) => a[0] - b[0])); }) && await until(() => !!filaT(nomC)));
+    t('combos: el cliente lo ve en el catálogo público', (await (await fetch(B + '/api/catalogo')).json()).combos.some((c) => c.nombre === nomC));
+    [...filaT(nomC).querySelectorAll('button')].find((x) => x.textContent === 'Editar').click();
+    const formE = await until(() => w.document.querySelector('#staff form[aria-label="Editar combo"]'));
+    t('combos: Editar abre el formulario con los datos actuales', !!formE && w.document.querySelector('[aria-label="Nombre del combo"]').value === nomC && !!w.document.querySelector('[aria-label="Producto 2"]'));
+    cambiar(w, w.document.querySelector('[aria-label="Nombre del combo"]'), nomC2);
+    [...w.document.querySelectorAll('#staff form button')].find((x) => x.getAttribute('aria-label') === 'Quitar producto 2').click();
+    cambiar(w, w.document.querySelector('[aria-label="Cantidad del producto 1"]'), '3');
+    enviarForm(w, w.document.querySelector('#staff form[aria-label="Editar combo"]'));
+    t('combos: editar cambia nombre, cantidades y quita productos', await until(async () => { const c = await combosBD(nomC2); return c && c.items.length === 1 && c.items[0][1] === 3 && !(await combosBD(nomC)); }) && await until(() => !!filaT(nomC2) && !filaT(nomC)));
+    [...filaT(nomC2).querySelectorAll('button')].find((x) => x.textContent === 'Deshabilitar').click();
+    t('combos: Deshabilitar lo oculta a los clientes y cambia el botón a Habilitar', await until(async () => (await combosBD(nomC2)).activo === false) && await until(() => [...filaT(nomC2).querySelectorAll('button')].some((x) => x.textContent === 'Habilitar')) && !(await (await fetch(B + '/api/catalogo')).json()).combos.some((c) => c.nombre === nomC2));
+    [...filaT(nomC2).querySelectorAll('button')].find((x) => x.textContent === 'Habilitar').click();
+    t('combos: Habilitar lo vuelve a publicar', await until(async () => (await (await fetch(B + '/api/catalogo')).json()).combos.some((c) => c.nombre === nomC2)));
+    [...filaT(nomC2).querySelectorAll('button')].find((x) => x.textContent === 'Eliminar').click();
+    t('combos: Eliminar pide confirmación antes de borrar', await until(() => /¿Eliminar este combo\?/.test(filaT(nomC2).textContent)) && !!(await combosBD(nomC2)));
+    [...filaT(nomC2).querySelectorAll('button')].find((x) => x.textContent === 'No').click();
+    t('combos: "No" cancela la eliminación', await until(() => !/¿Eliminar este combo\?/.test(filaT(nomC2).textContent)) && !!(await combosBD(nomC2)));
+    [...filaT(nomC2).querySelectorAll('button')].find((x) => x.textContent === 'Eliminar').click();
+    [...(await until(() => filaT(nomC2) && [...filaT(nomC2).querySelectorAll('button')].some((x) => x.textContent === 'Sí, eliminar') && filaT(nomC2)) || filaT(nomC2)).querySelectorAll('button')].find((x) => x.textContent === 'Sí, eliminar').click();
+    t('combos: confirmar elimina el combo de la lista y de la base', await until(async () => !(await combosBD(nomC2))) && await until(() => !filaT(nomC2)) && limpio(w));
 
     /* ---------- ADMIN: pedidos a proveedor (Sprint 7) ---------- */
     pest(w, 'Dashboard').click();

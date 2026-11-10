@@ -7,7 +7,7 @@ const combos = require('../services/combos');
 // Público: lo que ve el cliente en el catálogo
 router.get('/', wrap(async (req, res) => {
   const productos = await db.query('SELECT id,nombre,descripcion,precio FROM productos WHERE activo ORDER BY nombre');
-  res.json({ productos: productos.rows, combos: combos.vigentes(productos.rows), combo_personalizado: { nombre: combos.PERSONALIZADO.nombre, descripcion: combos.PERSONALIZADO.descripcion } });
+  res.json({ productos: productos.rows, combos: await combos.vigentes(), combo_personalizado: { nombre: combos.PERSONALIZADO.nombre, descripcion: combos.PERSONALIZADO.descripcion } });
 }));
 
 // Público: colonias de un código postal (catálogo SEPOMEX de Veracruz). `codigo_postal` es null si el código no está en el catálogo.
