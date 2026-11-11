@@ -58,7 +58,7 @@ const cuerpo = () => ({ items: Object.entries(d.q).map(([id, c]) => ({ producto_
   direccion: { cp: d.dir.cp, colonia: d.dir.colonia, calle: d.dir.calle, num_ext: d.dir.ext, num_int: d.dir.int, referencias: d.dir.ref, ...(d.dir.manual ? { municipio: d.dir.municipio } : {}) } });
 const dirCompleta = () => { const x = d.dir; return /^\d{5}$/.test(x.cp) && !!x.colonia.trim() && x.calle.trim().length >= 2 && !!x.ext.trim() && (!x.manual || !!x.municipio.trim()) && (x.manual || x.colonias.length > 0); };
 const textoDir = (x) => x ? `${x.calle} ${x.num_ext}${x.num_int ? ' int. ' + x.num_int : ''}, Col. ${x.colonia}, C.P. ${x.cp}, ${x.municipio}${x.estado ? ', ' + x.estado : ''}` : null;
-const manana = () => { const x = new Date(); x.setDate(x.getDate() + 1); return [x.getFullYear(), String(x.getMonth() + 1).padStart(2, '0'), String(x.getDate()).padStart(2, '0')].join('-'); };
+const hoyLocal = () => { const x = new Date(); return [x.getFullYear(), String(x.getMonth() + 1).padStart(2, '0'), String(x.getDate()).padStart(2, '0')].join('-'); };
 
 function buildArmar() {
   const root = $('#armar'); root.replaceChildren();
@@ -153,7 +153,7 @@ function buildArmar() {
     if (!d.fecha) { llenarHoras([]); return; }
     try { llenarHoras((await api('/pedidos/disponibilidad?fecha=' + encodeURIComponent(d.fecha))).horarios); } catch (e) { llenarHoras([]); }
   };
-  const fecha = el('input', { type: 'date', min: manana(), 'aria-label': 'Fecha de entrega', onchange: async (ev) => { d.fecha = ev.target.value; await cargaHoras(); cotizar(); } });
+  const fecha = el('input', { type: 'date', min: hoyLocal(), 'aria-label': 'Fecha de entrega', onchange: async (ev) => { d.fecha = ev.target.value; await cargaHoras(); cotizar(); } });
   fecha.value = d.fecha;
 
   /* ---------- Dirección de entrega: al escribir el código postal se llenan las colonias ---------- */

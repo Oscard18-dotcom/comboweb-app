@@ -295,7 +295,7 @@ Usa cualquier nombre, un vencimiento futuro (p. ej. 12/30) y un CVV de 3 dígito
 
 ## Corte de caja
 
-En **Corte de caja** (solo administrador): elige el periodo (por defecto hoy), escribe **con cuánto inicias** (fondo inicial) y el sistema suma los pagos aprobados del periodo, desglosados por tarjeta, para mostrar **con cuánto terminas** (saldo final esperado = fondo inicial + ventas cobradas). Opcionalmente escribes el monto contado al cierre y se calcula la diferencia.
+En **Corte de caja** (solo administrador): elige el periodo (por defecto hoy), escribe **con cuánto abres** (fondo inicial) y el sistema suma los pagos aprobados del periodo, desglosados por tarjeta, para mostrar **con cuánto terminas** (saldo final esperado = fondo inicial + ventas cobradas). Opcionalmente escribes el monto contado al cierre y se calcula la diferencia.
 
 - **Guardar corte e imprimir:** genera un folio `CC-####`, lo guarda y abre la impresión. La hoja imprime solo el corte (concepto/importe en formato contable, con espacios de firma “Elaboró” y “Revisó”).
 - **Cortes guardados:** historial con **Ver / imprimir** para reimprimir cualquier corte con sus cifras originales (un corte guardado no cambia aunque entren pagos nuevos).
@@ -308,3 +308,11 @@ En **Corte de caja** (solo administrador): elige el periodo (por defecto hoy), e
 | GET `/api/caja` · `/api/caja/:id` | Administrador | Historial y detalle |
 
 Pruebas: `npm run test:caja`.
+
+## Pedidos para el mismo día
+
+Ya se puede pedir para hoy. Para evitar horarios imposibles, en los pedidos de hoy solo se ofrecen las horas que falten **al menos 2 horas** (tiempo de preparación; los horarios anteriores aparecen deshabilitados). Se ajusta en `.env` / Render con `MIN_HOURS_AHEAD` (horas) y `MIN_DAYS_AHEAD` (0 = permitir hoy, 1 = exigir mínimo un día). Pruebas: `npm run test:mismo-dia`.
+
+## Ficha de cocina por producto
+
+Al tocar un pedido en el tablero, la ficha muestra **Ingredientes por producto** (p. ej. “2 × Galleta” con su receta, “1 × Brownie” con la suya), y un desplegable con el **total de ingredientes del pedido**.

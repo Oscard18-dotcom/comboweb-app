@@ -5,12 +5,17 @@ const combosSvc = require('./combos');
 
 const HORAS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
 const CAPACIDAD = () => Number(process.env.SLOT_CAPACITY || 2); // pedidos máximos por horario
-const DIAS_MIN = () => Number(process.env.MIN_DAYS_AHEAD || 1);  // anticipación mínima
+const DIAS_MIN = () => Number(process.env.MIN_DAYS_AHEAD || 0);  // 0 = se puede pedir para hoy mismo
+const HORAS_MIN = () => Number(process.env.MIN_HOURS_AHEAD ?? 2); // para pedidos de hoy: tiempo de preparación (horas)
 const DIAS_MAX = 90;
 const cents = (v) => Math.round(Number(v) * 100);
 
 /* ---------- Fechas (zona horaria de México) ---------- */
 const todayMX = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+// Minutos transcurridos del día en México (las pruebas pueden sustituir reloj.minutos para fijar la hora)
+const reloj = { minutos: () => { const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Mexico_City', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date()); return Number(p.find((x) => x.type === 'hour').value) * 60 + Number(p.find((x) => x.type === 'minute').value); } };
+// Un horario de HOY solo se ofrece si falta al menos HORAS_MIN horas; en otros días siempre está dentro del horario
+const horaAlcanzable = (fecha, hora) => fecha !== todayMX() || Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3)) >= reloj.minutos() + HORAS_MIN() * 60;
 const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const fechaValida = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s + 'T12:00:00Z')) && addDays(s, 0) === s;
 
@@ -19,7 +24,7 @@ async function horarios(q, fecha) {
   const { rows } = await q.query(
     'SELECT left(hora_entrega::text,5) AS h, count(*)::int AS n FROM pedidos WHERE fecha_entrega=$1 GROUP BY 1', [fecha]);
   const ocupados = Object.fromEntries(rows.map((r) => [r.h, r.n]));
-  return HORAS.map((hora) => ({ hora, disponible: (ocupados[hora] || 0) < CAPACIDAD() }));
+  return HORAS.map((hora) => ({ hora, disponible: horaAlcanzable(fecha, hora) && (ocupados[hora] || 0) < CAPACIDAD() }));
 }
 
 /* ---------- Insumos que consume un combo ---------- */
@@ -99,6 +104,7 @@ async function validar(q, b = {}) {
   else fechaOk = true;
   const horaOk = HORAS.includes(b.hora);
   if (!horaOk) err('hora', 'hora_invalida', `Elige una hora de entrega entre ${HORAS[0]} y ${HORAS[HORAS.length - 1]}.`);
+  else if (fechaOk && !horaAlcanzable(b.fecha, b.hora)) err('hora', 'hora_pasada', `Para hoy elige una hora con al menos ${HORAS_MIN()} horas de anticipación.`);
 
   let detalle = null, comboElegido = null;
   if (itemsOk) {
@@ -231,4 +237,4 @@ async function pedidosDe(clienteId) {
   });
 }
 
-module.exports = { HORAS, todayMX, addDays, fechaValida, horarios, validar, crearCheckout, confirmarPago, detallePedido, pedidosDe, folio };
+module.exports = { HORAS, reloj, todayMX, addDays, fechaValida, horarios, validar, crearCheckout, confirmarPago, detallePedido, pedidosDe, folio };

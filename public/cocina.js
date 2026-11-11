@@ -55,8 +55,12 @@ Personal.registrar('tab', 'Tablero de pedidos', ['cocina', 'admin'], 2, (cont, H
         p.presentacion ? [e('dt', {}, 'Presentación'), e('dd', {}, p.presentacion)] : null,
         e('dt', {}, 'Combo'), e('dd', {}, p.items.map((i) => `${i.nombre} x${i.cantidad}`).join(', '))),
       p.dedicatoria ? e('span', { class: 'ded' }, '🎂 Dedicatoria: ' + p.dedicatoria) : e('p', { class: 'mu' }, 'Sin dedicatoria.'),
-      e('h3', { style: 'margin-top:10px' }, 'Ingredientes'),
-      ...(p.ingredientes.length ? p.ingredientes.map((i) => e('div', { class: 'ln' }, e('span', {}, i.nombre), e('span', {}, `${H.num(i.cantidad)} ${i.unidad}`))) : [e('p', { class: 'mu' }, 'Sin receta registrada.')]))] : []));
+      e('h3', { style: 'margin-top:10px' }, 'Ingredientes por producto'),
+      ...p.productos.map((pr) => e('div', { class: 'prodrec', 'data-producto': pr.nombre },
+        e('h4', { style: 'margin:10px 0 4px' }, `${pr.cantidad} × ${pr.nombre}`),
+        ...(pr.sin_receta ? [e('p', { class: 'mu' }, 'Sin receta registrada.')] : pr.ingredientes.map((i) => e('div', { class: 'ln' }, e('span', {}, i.nombre), e('span', {}, `${H.num(i.cantidad)} ${i.unidad}`)))))),
+      p.productos.length > 1 && p.ingredientes.length ? e('details', { style: 'margin-top:10px' }, e('summary', {}, 'Total de ingredientes del pedido'),
+        ...p.ingredientes.map((i) => e('div', { class: 'ln' }, e('span', {}, i.nombre), e('span', {}, `${H.num(i.cantidad)} ${i.unidad}`)))) : null)] : []));
   }
   cargar(); H.cada(20000, cargar);
 });

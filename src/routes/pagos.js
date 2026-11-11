@@ -16,9 +16,6 @@ async function propio(req, res) {
   if (!rows[0]) { res.status(404).json({ error: 'Pago no encontrado.' }); return null; }
   return rows[0];
 }
-// Tarjetas de prueba que muestra la pantalla de pago
-router.get('/simulado/tarjetas-prueba', (req, res) => res.json({ tarjetas: tarjeta.PRUEBAS }));
-
 // Pago con tarjeta SIMULADA: pide los datos, los valida y decide. El número y el CVV no se guardan: solo "Visa •••• 4242".
 router.post('/simulado/:id/aprobar', wrap(async (req, res) => {
   const ck = await propio(req, res); if (!ck) return;

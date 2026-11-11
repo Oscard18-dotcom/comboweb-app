@@ -51,7 +51,7 @@ const hay = (r, codigo) => (r.j.errores || []).some((e) => e.codigo === codigo);
     const malos = [
       ['sin productos', { items: [] }, 'sin_productos'], ['cantidad 0', { items: [{ producto_id: P('Cupcake'), cantidad: 0 }] }, 'item_invalido'],
       ['cantidad decimal', { items: [{ producto_id: P('Cupcake'), cantidad: 1.5 }] }, 'item_invalido'], ['más de 50 piezas', { items: [{ producto_id: P('Galleta'), cantidad: 51 }] }, 'cantidad_excedida'],
-      ['producto inexistente', { items: [{ producto_id: 999999, cantidad: 1 }] }, 'producto_no_disponible'], ['fecha de hoy (sin anticipación)', { fecha: svc.todayMX() }, 'fecha_pasada'],
+      ['producto inexistente', { items: [{ producto_id: 999999, cantidad: 1 }] }, 'producto_no_disponible'], ['fecha de ayer', { fecha: svc.addDays(svc.todayMX(), -1) }, 'fecha_pasada'],
       ['fecha pasada', { fecha: '2020-01-01' }, 'fecha_pasada'], ['fecha mal formada', { fecha: '2026-02-30' }, 'fecha_invalida'], ['fecha muy lejana', { fecha: svc.addDays(svc.todayMX(), 200) }, 'fecha_lejana'],
       ['hora fuera de horario', { hora: '03:00' }, 'hora_invalida'], ['dedicatoria de 121 caracteres', { dedicatoria: 'x'.repeat(121) }, 'dedicatoria_larga'],
     ];

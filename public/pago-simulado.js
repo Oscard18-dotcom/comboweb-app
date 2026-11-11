@@ -35,12 +35,6 @@ function revisar() {
     $('#aprobar').disabled = $('#rechazar').disabled = checkout.estado !== 'creado';
     if (checkout.estado !== 'creado') $('#err').textContent = 'Este pago ya fue procesado.';
   } catch (e) { $('#err').textContent = e.message; return; }
-  try {
-    const { tarjetas } = await api('/pagos/simulado/tarjetas-prueba');
-    const cuerpo = $('#pruebas tbody');
-    tarjetas.forEach((t) => { const tr = document.createElement('tr'), a = document.createElement('td'), b = document.createElement('td'); a.textContent = t.numero; b.textContent = t.resultado; tr.append(a, b); cuerpo.append(tr); });
-  } catch (e) { /* la lista es solo una ayuda */ }
-
   $('#form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     if (!revisar()) return;
@@ -52,7 +46,7 @@ function revisar() {
     } catch (e) {
       if (e.campos) { Object.entries(e.campos).forEach(([c, m]) => CAMPOS.includes(c) && marcar(c, m)); }
       $('#err').textContent = e.message;
-      $('#aprobar').disabled = false; $('#aprobar').textContent = 'Pagar (simulado)'; $('#cvv').value = '';
+      $('#aprobar').disabled = false; $('#aprobar').textContent = 'Pagar'; $('#cvv').value = '';
     }
   });
   $('#rechazar').onclick = async () => { try { await api(`/pagos/simulado/${id}/rechazar`, 'POST'); location.assign('/?cancelado=' + id); } catch (e) { $('#err').textContent = e.message; } };

@@ -6,7 +6,7 @@ const luhn = (n) => { let s = 0, alt = false; for (let i = n.length - 1; i >= 0;
 const marcaDe = (n) => (/^4/.test(n) ? 'Visa' : /^(5[1-5]|2[2-7])/.test(n) ? 'Mastercard' : /^3[47]/.test(n) ? 'American Express' : 'Tarjeta');
 
 // Tarjetas de prueba (todas válidas por Luhn)
-const RECHAZOS = { '4000000000000002': 'El banco rechazó la tarjeta (simulado).', '4000000000009995': 'Fondos insuficientes (simulado).' };
+const RECHAZOS = { '4000000000000002': 'El banco rechazó la tarjeta.', '4000000000009995': 'Fondos insuficientes.' };
 const PRUEBAS = [
   { numero: '4242 4242 4242 4242', resultado: 'Pago aprobado (Visa)' },
   { numero: '5555 5555 5555 4444', resultado: 'Pago aprobado (Mastercard)' },

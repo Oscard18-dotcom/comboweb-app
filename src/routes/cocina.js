@@ -19,10 +19,23 @@ async function fichas(rows) {
     `SELECT pi.pedido_id, i.nombre, i.unidad, ceil(sum(ri.cantidad / r.rinde * pi.cantidad) * 10000) / 10000 AS cantidad
        FROM pedido_items pi JOIN recetas r ON r.producto_id = pi.producto_id JOIN receta_ingredientes ri ON ri.receta_id = r.id JOIN insumos i ON i.id = ri.insumo_id
       WHERE pi.pedido_id = ANY($1) GROUP BY pi.pedido_id, i.id ORDER BY i.nombre`, [ids])).rows : [];
+  // Ingredientes separados por producto: lo que lleva cada producto del pedido, según su receta y la cantidad pedida
+  const xp = ids.length ? (await db.query(
+    `SELECT pi.pedido_id, pi.producto_id, pr.nombre AS producto, pi.cantidad AS pedido_cant, r.rinde, i.nombre, i.unidad, ceil(ri.cantidad / r.rinde * pi.cantidad * 10000) / 10000 AS cantidad
+       FROM pedido_items pi JOIN productos pr ON pr.id = pi.producto_id LEFT JOIN recetas r ON r.producto_id = pi.producto_id
+       LEFT JOIN receta_ingredientes ri ON ri.receta_id = r.id LEFT JOIN insumos i ON i.id = ri.insumo_id
+      WHERE pi.pedido_id = ANY($1) ORDER BY pi.pedido_id, pr.nombre, i.nombre`, [ids])).rows : [];
+  const prods = new Map();
+  for (const x of xp) {
+    if (!prods.has(x.pedido_id)) prods.set(x.pedido_id, new Map());
+    const m = prods.get(x.pedido_id);
+    if (!m.has(x.producto_id)) m.set(x.producto_id, { producto_id: x.producto_id, nombre: x.producto, cantidad: x.pedido_cant, ingredientes: [] });
+    if (x.nombre) m.get(x.producto_id).ingredientes.push({ nombre: x.nombre, unidad: x.unidad, cantidad: Number(x.cantidad) });
+  }
   const por = new Map();
   for (const x of ing) { if (!por.has(x.pedido_id)) por.set(x.pedido_id, []); por.get(x.pedido_id).push({ nombre: x.nombre, unidad: x.unidad, cantidad: Number(x.cantidad) }); }
   return rows.map((r) => ({ id: r.id, folio: svc.folio(r.id), estatus: r.estatus, fecha: r.fecha, hora: r.hora, atrasado: r.atrasado, cliente: r.cliente,
-    presentacion: r.presentacion, combo: r.combo_nombre || null, dedicatoria: r.dedicatoria, direccion: direccion.desdeFila(r), items: r.items || [], ingredientes: por.get(r.id) || [] }));
+    presentacion: r.presentacion, combo: r.combo_nombre || null, dedicatoria: r.dedicatoria, direccion: direccion.desdeFila(r), items: r.items || [], productos: [...(prods.get(r.id) || new Map()).values()].map((p) => ({ ...p, sin_receta: !p.ingredientes.length })), ingredientes: por.get(r.id) || [] }));
 }
 const BASE = `SELECT p.id,p.estatus,p.fecha_entrega::text AS fecha,left(p.hora_entrega::text,5) AS hora,p.dedicatoria,p.combo_nombre,pr.nombre AS presentacion,u.nombre AS cliente,${direccion.COLS},
     (p.fecha_entrega < $1::date AND p.estatus <> 'Entregado') AS atrasado,

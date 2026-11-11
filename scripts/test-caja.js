@@ -54,7 +54,6 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     t('pagar otra vez el mismo checkout no duplica el pedido', (await pagar(id, OK)).j.pedido_id === r.j.pedido_id && (await q('SELECT count(*)::int n FROM pedidos WHERE cliente_id=$1', [clientes[0]]))[0].n === 1);
     id = await nuevo(); r = await pagar(id, { ...OK, numero: '5555 5555 5555 4444' });
     t('Mastercard se reconoce', r.s === 200 && (await q('SELECT tarjeta FROM pagos WHERE pedido_id=$1', [r.j.pedido_id]))[0].tarjeta === 'Mastercard •••• 4444');
-    t('la lista de tarjetas de prueba la ve el cliente', (await call('GET', '/api/pagos/simulado/tarjetas-prueba', undefined, cli)).j.tarjetas.length === 4 && (await call('GET', '/api/pagos/simulado/tarjetas-prueba', undefined, admin)).s === 403);
 
     /* ---- Corte de caja ---- */
     t('caja: sin sesión 401; cliente, cocina y almacén 403', (await call('GET', '/api/caja')).s === 401 && (await call('GET', '/api/caja/resumen', undefined, cli)).s === 403 && (await call('POST', '/api/caja', {}, cocina)).s === 403 && (await call('GET', '/api/caja/1', undefined, almacen)).s === 403);

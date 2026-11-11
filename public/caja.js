@@ -63,12 +63,12 @@
     } },
       e('div', { class: 'row filtros', style: 'align-items:end;flex-wrap:wrap;gap:12px' },
         e('label', {}, 'Desde', inDesde), e('label', {}, 'Hasta', inHasta),
-        e('label', {}, 'Con cuánto inicias (MXN)', inFondo), e('label', {}, 'Contado al cierre (MXN)', inContado), e('label', {}, 'Notas', inNotas)),
+        e('label', {}, 'Con cuánto abres (MXN)', e('small', { class: 'mu', style: 'display:block' }, 'Dinero con el que inicia el día'), inFondo), e('label', {}, 'Contado al cierre (MXN)', e('small', { class: 'mu', style: 'display:block' }, 'Opcional: lo que realmente cuentas'), inContado), e('label', {}, 'Notas', inNotas)),
       e('div', { style: 'margin-top:10px;display:flex;gap:10px;flex-wrap:wrap' }, btnGuardar, e('button', { class: 'btn s', type: 'button', onclick: () => window.print() }, 'Imprimir vista actual')));
     [inDesde, inHasta].forEach((i) => i.addEventListener('change', calcular));
     [inFondo, inContado, inNotas].forEach((i) => i.addEventListener('input', () => { if (guardado) { guardado = null; } vistaPrevia(); }));
 
-    cont.append(e('p', { class: 'mu noprint' }, 'Elige el periodo, escribe con cuánto dinero inicias y el sistema suma lo cobrado para mostrar con cuánto terminas. Si cuentas el dinero al cierre, escríbelo para ver la diferencia. Al guardar se genera un folio y se abre la impresión.'),
+    cont.append(e('p', { class: 'mu noprint' }, 'Cómo funciona: 1) elige el periodo; 2) escribe con cuánto dinero abres; el sistema suma lo cobrado y te dice con cuánto deberías cerrar (apertura + ventas). 3) Si al cerrar cuentas lo que realmente tienes, escríbelo en “Contado al cierre” (es opcional) y verás si hay diferencia. Al guardar se genera un folio y se abre la impresión.'),
       err, msg, form, hoja, e('h3', { class: 'noprint', style: 'margin-top:14px' }, 'Cortes guardados'), hist);
     calcular(); historial();
   });

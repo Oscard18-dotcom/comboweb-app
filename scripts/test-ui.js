@@ -115,8 +115,8 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const w2 = (await abrir(ck.url, { t: token, u: usr })).window;
     t('la pantalla de pago simulado muestra el total', await until(() => /Total a pagar/.test(w2.document.querySelector('#total').textContent) && !w2.document.querySelector('#aprobar').disabled));
     const d2 = w2.document, f2 = (id, v) => { const i = d2.querySelector('#' + id); i.value = v; i.dispatchEvent(new w2.Event('input', { bubbles: true })); };
-    t('la pantalla de pago pide titular, número, vencimiento y CVV, y avisa que es simulada', ['titular', 'numero', 'vence', 'cvv'].every((c) => !!d2.querySelector('#' + c)) && /SIMULADO/.test(d2.querySelector('h2').textContent) && /no se cobra nada/i.test(d2.body.textContent));
-    t('lista las tarjetas de prueba', await until(() => d2.querySelectorAll('#pruebas tbody tr').length === 4));
+    t('la pantalla de pago pide titular, número, vencimiento y CVV', ['titular', 'numero', 'vence', 'cvv'].every((c) => !!d2.querySelector('#' + c)));
+    t('la pantalla de pago no muestra el rótulo SIMULADO, el aviso de práctica ni la lista de tarjetas de prueba', !/simulad/i.test(d2.body.textContent) && !/pasarela de práctica|tarjetas de prueba|no se cobra nada/i.test(d2.body.textContent) && !d2.querySelector('#pruebas') && d2.querySelector('#aprobar').textContent === 'Pagar');
     enviarForm(w2, d2.querySelector('#form'));
     t('pagar sin llenar nada marca los 4 campos con su error', ['titular', 'numero', 'vence', 'cvv'].every((c) => d2.querySelector('#e-' + c).textContent.length > 5 && d2.querySelector('#' + c).getAttribute('aria-invalid') === 'true'));
     f2('titular', 'Cliente Prueba'); f2('numero', '4242424242424241'); f2('vence', '1239'); f2('cvv', '123');
@@ -484,6 +484,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('la dedicatoria se ve destacada y como TEXTO (sin ejecutar HTML)', tarj(0, 1).querySelector('.ded').textContent.includes('<img src=x') && !w.document.querySelector('#staff img') && !w.__pwned);
     tarj(0, 1).click();
     t('al tocar un pedido aparece su ficha técnica con ingredientes', await until(() => /Ficha técnica/.test($('#staff .ficha').textContent) && /Ingredientes/.test($('#staff .ficha').textContent) && /Harina/.test($('#staff .ficha').textContent)));
+    t('la ficha separa los ingredientes por producto (un bloque por cada producto con su receta)', (() => { const bl = [...w.document.querySelectorAll('#staff .ficha .prodrec')]; return bl.length >= 2 && bl.every((x) => /^\d+ × /.test(x.querySelector('h4').textContent) && x.querySelectorAll('.ln').length >= 1) && /Ingredientes por producto/.test($('#staff .ficha').textContent); })());
     boton(tarj(0, 1), 'Iniciar').click();
     t('"Iniciar": el pedido pasa a En preparación y el cliente queda avisado por correo', await until(() => cols()[1].querySelectorAll('.oc').length === 1) && (await db.query('SELECT estatus FROM pedidos WHERE id=$1', [ordenCli.id])).rows[0].estatus === 'En preparación' && (await db.query("SELECT count(*)::int n FROM notificaciones WHERE pedido_id=$1 AND plantilla='En preparación'", [ordenCli.id])).rows[0].n === 1);
     boton(tarj(1, 0), 'Marcar listo').click();
