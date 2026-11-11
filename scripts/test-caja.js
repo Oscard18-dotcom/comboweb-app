@@ -55,43 +55,63 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     id = await nuevo(); r = await pagar(id, { ...OK, numero: '5555 5555 5555 4444' });
     t('Mastercard se reconoce', r.s === 200 && (await q('SELECT tarjeta FROM pagos WHERE pedido_id=$1', [r.j.pedido_id]))[0].tarjeta === 'Mastercard •••• 4444');
 
-    /* ---- Corte de caja ---- */
-    t('caja: sin sesión 401; cliente, cocina y almacén 403', (await call('GET', '/api/caja')).s === 401 && (await call('GET', '/api/caja/resumen', undefined, cli)).s === 403 && (await call('POST', '/api/caja', {}, cocina)).s === 403 && (await call('GET', '/api/caja/1', undefined, almacen)).s === 403);
-    const hoy = svc.todayMX();
+    /* ---- Corte de caja en dos pasos ---- */
+    const hoy = svc.todayMX(), ayer = svc.addDays(hoy, -1), viejo = svc.addDays(hoy, -400);
+    await db.query('DELETE FROM cortes_caja WHERE desde = ANY($1)', [[hoy, ayer, viejo]]);
+    t('caja: sin sesión 401; cliente, cocina y almacén 403', (await call('GET', '/api/caja')).s === 401 && (await call('GET', '/api/caja/dia', undefined, cli)).s === 403 && (await call('POST', '/api/caja/abrir', {}, cocina)).s === 403 && (await call('POST', '/api/caja/1/cerrar', {}, almacen)).s === 403 && (await call('GET', '/api/caja/1', undefined, almacen)).s === 403);
+    r = await call('GET', '/api/caja/dia', undefined, admin);
     const real = (await q("SELECT count(*)::int n, coalesce(sum(monto),0) m FROM pagos WHERE estado='aprobado' AND (creado_en AT TIME ZONE 'America/Mexico_City')::date=$1", [hoy]))[0];
-    r = await call('GET', '/api/caja/resumen', undefined, admin);
-    t('resumen de hoy (por defecto) = pagos aprobados de hoy en la base', r.s === 200 && r.j.desde === hoy && r.j.hasta === hoy && r.j.pedidos === real.n && Math.abs(r.j.ventas - Number(real.m)) < 0.005, JSON.stringify(r.j));
-    t('el desglose suma lo mismo que el total y trae las marcas', r.j.desglose.reduce((a, x) => a + x.monto, 0).toFixed(2) === r.j.ventas.toFixed(2) && r.j.desglose.some((x) => x.metodo === 'Visa') && r.j.desglose.some((x) => x.metodo === 'Mastercard'));
-    const resumenes = [['desde=2026-13-01', 'fecha inválida'], [`desde=${svc.addDays(hoy, 1)}&hasta=${svc.addDays(hoy, 1)}`, 'futuro'], [`desde=${hoy}&hasta=${svc.addDays(hoy, -2)}`, 'invertido'], [`desde=${svc.addDays(hoy, -200)}&hasta=${hoy}`, 'más de 3 meses']];
-    for (const [qs, d] of resumenes) t(`resumen con rango ${d} → 400`, (await call('GET', '/api/caja/resumen?' + qs, undefined, admin)).s === 400);
-    t('un día sin pagos da ceros', (await call('GET', '/api/caja/resumen?desde=2020-01-01&hasta=2020-01-01', undefined, admin)).j.ventas === 0);
+    t('día sin abrir: no hay corte y trae las ventas del día (pagos aprobados)', r.s === 200 && r.j.fecha === hoy && r.j.corte === null && r.j.resumen.pedidos === real.n && Math.abs(r.j.resumen.ventas - Number(real.m)) < 0.005, JSON.stringify(r.j));
+    t('el desglose suma el total y trae las marcas', r.j.resumen.desglose.reduce((a, x) => a + x.monto, 0).toFixed(2) === r.j.resumen.ventas.toFixed(2) && r.j.resumen.desglose.some((x) => x.metodo === 'Visa') && r.j.resumen.desglose.some((x) => x.metodo === 'Mastercard'));
+    for (const [qs, d] of [['fecha=2026-13-01', 'fecha inválida'], [`fecha=${svc.addDays(hoy, 1)}`, 'día futuro']]) t(`consultar un día con ${d} → 400`, (await call('GET', '/api/caja/dia?' + qs, undefined, admin)).s === 400);
+    const malosA = [[{ fondo_inicial: '' }, 'falta el fondo'], [{ fondo_inicial: -5 }, 'negativo'], [{ fondo_inicial: 'abc' }, 'texto'], [{ fondo_inicial: 100.555 }, '3 decimales'], [{ fondo_inicial: 100, notas: 'x'.repeat(201) }, 'notas largas'], [{ fondo_inicial: 100, fecha: svc.addDays(hoy, 3) }, 'día futuro'], [{ fondo_inicial: 100, fecha: '2026-02-30' }, 'fecha inválida']];
+    for (const [b, d] of malosA) t(`abrir inválido (${d}) → 400`, (await call('POST', '/api/caja/abrir', b, admin)).s === 400);
+    t('lo inválido no guardó ninguna caja', (await q('SELECT count(*)::int n FROM cortes_caja WHERE desde = $1', [hoy]))[0].n === 0);
 
-    const malosC = [[{ fondo_inicial: '' }, 'falta el fondo'], [{ fondo_inicial: -5 }, 'negativo'], [{ fondo_inicial: 'abc' }, 'texto'], [{ fondo_inicial: 100.555 }, '3 decimales'], [{ fondo_inicial: 100, contado: 'x' }, 'contado inválido'], [{ fondo_inicial: 100, notas: 'x'.repeat(201) }, 'notas largas'], [{ fondo_inicial: 100, hasta: svc.addDays(hoy, 3) }, 'futuro']];
-    for (const [b, d] of malosC) t(`guardar corte inválido (${d}) → 400`, (await call('POST', '/api/caja', b, admin)).s === 400);
-    t('los cortes inválidos no se guardan', (await q('SELECT count(*)::int n FROM cortes_caja WHERE notas LIKE $1', [`%${R}%`]))[0].n === 0);
+    // Paso 1: abrir
+    r = await call('POST', '/api/caja/abrir', { fondo_inicial: '500', notas: `Prueba ${R}` }, admin);
+    const ab = r.j.corte; if (ab) cortes.push(ab.id);
+    t('abrir caja → 201, estado abierto, con folio y el fondo guardado', r.s === 201 && ab.estado === 'abierto' && /^CC-\d{4,}$/.test(ab.folio) && ab.fondo_inicial === 500 && ab.fecha === hoy && ab.contado === null && ab.saldo_final === null, JSON.stringify(r.j));
+    t('abre a nombre de quien la abrió', /Admin/i.test(ab.abrio || ''));
+    t('el fondo queda guardado: al volver a entrar el día aparece abierto con el mismo fondo', await (async () => { const d = (await call('GET', '/api/caja/dia', undefined, admin)).j; return d.corte && d.corte.id === ab.id && d.corte.estado === 'abierto' && d.corte.fondo_inicial === 500; })());
+    t('no se puede abrir dos veces el mismo día → 409', (await call('POST', '/api/caja/abrir', { fondo_inicial: 1 }, admin)).s === 409 && (await q('SELECT count(*)::int n FROM cortes_caja WHERE desde=$1', [hoy]))[0].n === 1);
+    t('abierta, la caja aparece en el historial con estado abierto', (await call('GET', '/api/caja', undefined, admin)).j.cortes.some((x) => x.id === ab.id && x.estado === 'abierto'));
 
-    r = await call('POST', '/api/caja', { fondo_inicial: '500', contado: '' + (500 + Number(real.m) + 2 + 20.5 * 0), notas: `Prueba ${R}`, ventas: 99999, saldo_final: 1 }, admin);
-    const rr = await call('GET', '/api/caja/resumen', undefined, admin);
-    const cr = r.j.corte; if (cr) cortes.push(cr.id);
-    t('guardar corte → 201 con folio CC-####', r.s === 201 && /^CC-\d{4,}$/.test(cr.folio), JSON.stringify(r.j));
-    t('el servidor calcula las ventas (ignora las que mande el navegador)', cr.ventas === rr.j.ventas && cr.pedidos === rr.j.pedidos && cr.ventas !== 99999);
-    t('saldo final = fondo inicial + ventas', Math.abs(cr.saldo_final - (500 + cr.ventas)) < 0.005 && cr.fondo_inicial === 500 && cr.saldo_final !== 1);
-    t('diferencia = contado − esperado', cr.contado != null && Math.abs(cr.diferencia - (cr.contado - cr.saldo_final)) < 0.005 && Math.abs(cr.diferencia - 2) < 0.005, JSON.stringify(cr));
-    t('el corte guarda quién lo hizo y las notas', /Admin/i.test(cr.hecho_por || '') && cr.notas === `Prueba ${R}`);
-    r = await call('POST', '/api/caja', { fondo_inicial: 0 }, admin); if (r.j.corte) cortes.push(r.j.corte.id);
-    t('sin monto contado la diferencia queda vacía', r.s === 201 && r.j.corte.contado === null && r.j.corte.diferencia === null);
-    const lista = (await call('GET', '/api/caja', undefined, admin)).j.cortes;
-    t('el historial trae los cortes, el más reciente primero', lista.length >= 2 && lista[0].id > lista[1].id && lista.some((x) => x.id === cr.id));
-    r = await call('GET', `/api/caja/${cr.id}`, undefined, admin);
-    t('se puede volver a abrir un corte guardado (para reimprimir) con las mismas cifras', r.s === 200 && r.j.corte.folio === cr.folio && r.j.corte.saldo_final === cr.saldo_final && Array.isArray(r.j.corte.desglose));
+    // Paso 2: cerrar
+    const malosC = [[{}, 'sin cantidad'], [{ contado: '' }, 'vacía'], [{ contado: -1 }, 'negativa'], [{ contado: 'x' }, 'texto'], [{ contado: 10.999 }, '3 decimales'], [{ contado: 10, notas: 'x'.repeat(201) }, 'notas largas']];
+    for (const [b, d] of malosC) t(`cerrar inválido (${d}) → 400 y la caja sigue abierta`, (await call('POST', `/api/caja/${ab.id}/cerrar`, b, admin)).s === 400);
+    t('tras los intentos inválidos sigue abierta', (await q('SELECT estado FROM cortes_caja WHERE id=$1', [ab.id]))[0].estado === 'abierto');
+    t('cerrar una caja inexistente → 404; id inválido → 400', (await call('POST', '/api/caja/99999999/cerrar', { contado: 1 }, admin)).s === 404 && (await call('POST', '/api/caja/abc/cerrar', { contado: 1 }, admin)).s === 400);
+    const ventasAntes = (await call('GET', '/api/caja/dia', undefined, admin)).j.resumen;
+    const contado = Math.round((500 + ventasAntes.ventas + 2) * 100) / 100;
+    r = await call('POST', `/api/caja/${ab.id}/cerrar`, { contado, ventas: 99999, saldo_final: 1, fondo_inicial: 7 }, admin);
+    const cr = r.j.corte;
+    t('cerrar → 200, estado cerrado', r.s === 200 && cr.estado === 'cerrado' && cr.id === ab.id, JSON.stringify(r.j));
+    t('las ventas las calcula el servidor (ignora lo que mande el navegador)', cr.ventas === ventasAntes.ventas && cr.pedidos === ventasAntes.pedidos && cr.ventas !== 99999 && cr.fondo_inicial === 500);
+    t('saldo final esperado = fondo inicial + ventas', Math.abs(cr.saldo_final - (500 + cr.ventas)) < 0.005 && cr.saldo_final !== 1);
+    t('diferencia = cantidad final − esperado', cr.contado === contado && Math.abs(cr.diferencia - 2) < 0.005, JSON.stringify(cr));
+    t('el cierre guarda quién cerró, cuándo y el desglose', /Admin/i.test(cr.hecho_por || '') && !!cr.cerrado_en && Array.isArray(cr.desglose) && cr.notas === `Prueba ${R}`);
+    t('cerrar otra vez → 409 y no cambia nada', (await call('POST', `/api/caja/${ab.id}/cerrar`, { contado: 1 }, admin)).s === 409 && (await call('GET', `/api/caja/${ab.id}`, undefined, admin)).j.corte.contado === contado);
+    t('un día cerrado no se puede volver a abrir → 409', (await call('POST', '/api/caja/abrir', { fondo_inicial: 5 }, admin)).s === 409);
+    t('el corte cerrado se puede reabrir para reimprimir con las mismas cifras', (await call('GET', `/api/caja/${ab.id}`, undefined, admin)).j.corte.saldo_final === cr.saldo_final);
+    t('un corte cerrado no cambia aunque entren pagos nuevos', await (async () => { const i2 = await nuevo(); await pagar(i2, OK); const o = (await call('GET', `/api/caja/${ab.id}`, undefined, admin)).j.corte; return o.ventas === cr.ventas && o.saldo_final === cr.saldo_final; })());
     t('corte inexistente → 404; id inválido → 400', (await call('GET', '/api/caja/99999999', undefined, admin)).s === 404 && (await call('GET', '/api/caja/abc', undefined, admin)).s === 400);
-    t('un corte guardado no cambia aunque entren pagos nuevos', await (async () => { const i2 = await nuevo(); await pagar(i2, OK); const o = (await call('GET', `/api/caja/${cr.id}`, undefined, admin)).j.corte; return o.ventas === cr.ventas && o.saldo_final === cr.saldo_final; })());
+
+    // Un día anterior que se quedó abierto
+    r = await call('POST', '/api/caja/abrir', { fecha: ayer, fondo_inicial: 0 }, admin); if (r.j.corte) cortes.push(r.j.corte.id);
+    t('se puede abrir la caja de un día anterior (fondo 0)', r.s === 201 && r.j.corte.fecha === ayer && r.j.corte.fondo_inicial === 0);
+    const dAyer = (await call('GET', `/api/caja/dia?fecha=${ayer}`, undefined, admin)).j;
+    r = await call('POST', `/api/caja/${r.j.corte.id}/cerrar`, { contado: 0 }, admin);
+    t('día anterior sin ventas: cierra en ceros y sin diferencia', dAyer.corte.estado === 'abierto' && r.s === 200 && r.j.corte.ventas === 0 && r.j.corte.saldo_final === 0 && r.j.corte.diferencia === 0);
+    const lista = (await call('GET', '/api/caja', undefined, admin)).j.cortes;
+    t('el historial trae los cortes, el día más reciente primero', lista.length >= 2 && lista[0].fecha >= lista[1].fecha && lista.some((x) => x.id === ab.id && x.estado === 'cerrado'));
   } catch (e) { fail++; console.log('FAIL error inesperado', e); }
   finally {
     try {
       mail.reemplazar(null);
       const ids = clientes.filter(Boolean);
       await db.query('DELETE FROM cortes_caja WHERE id = ANY($1)', [cortes]);
+      await db.query('DELETE FROM cortes_caja WHERE desde = ANY($1)', [[svc.todayMX(), svc.addDays(svc.todayMX(), -1), svc.addDays(svc.todayMX(), -400)]]);
       await db.query('DELETE FROM checkouts WHERE cliente_id = ANY($1)', [ids]);
       await db.query('DELETE FROM movimientos_inventario WHERE pedido_id IN (SELECT id FROM pedidos WHERE cliente_id = ANY($1))', [ids]);
       await db.query('DELETE FROM pagos WHERE pedido_id IN (SELECT id FROM pedidos WHERE cliente_id = ANY($1))', [ids]);

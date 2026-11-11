@@ -1,75 +1,94 @@
-// Corte de caja (administrador): con cuánto se inicia, lo cobrado en el periodo y con cuánto se termina. Se puede imprimir.
+// Corte de caja (administrador), en dos pasos: 1) elegir el día y ABRIR con el dinero con el que se inicia (queda guardado);
+// 2) más tarde, volver a entrar y CERRAR con la cantidad final. Solo con la caja cerrada se puede imprimir.
 (() => {
   const costo = (n) => Number(n).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
   const hoyMX = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mexico_City' });
-  const fechaLarga = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
-  const periodoTxt = (d, h) => (d === h ? fechaLarga(d) : `del ${fechaLarga(d)} al ${fechaLarga(h)}`);
+  const fechaLarga = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const cuando = (iso) => new Date(iso).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' });
 
   Personal.registrar('caja', 'Corte de caja', ['admin'], 5.5, (cont, H) => {
     const { e, api } = H;
     const err = e('div', { class: 'errbox noprint', role: 'alert' }), msg = e('p', { class: 'okmsg noprint', role: 'status' });
-    const inDesde = e('input', { type: 'date', value: hoyMX(), max: hoyMX(), 'aria-label': 'Desde' });
-    const inHasta = e('input', { type: 'date', value: hoyMX(), max: hoyMX(), 'aria-label': 'Hasta' });
-    const inFondo = e('input', { type: 'number', min: '0', step: '0.01', value: '0', 'aria-label': 'Con cuánto inicias (fondo inicial)', style: 'width:140px' });
-    const inContado = e('input', { type: 'number', min: '0', step: '0.01', placeholder: 'Opcional', 'aria-label': 'Monto contado al cierre', style: 'width:140px' });
-    const inNotas = e('input', { type: 'text', maxlength: '200', placeholder: 'Opcional', 'aria-label': 'Notas del corte', style: 'min-width:220px' });
-    const hoja = e('div', { class: 'hoja', 'aria-label': 'Hoja del corte de caja' });
+    const inDia = e('input', { type: 'date', value: hoyMX(), max: hoyMX(), 'aria-label': 'Día del corte' });
+    const aviso = e('div', { class: 'noprint' }), panel = e('div', { class: 'noprint' }), hoja = e('div', { class: 'hoja', 'aria-label': 'Hoja del corte de caja' });
     const hist = e('div', { class: 'card tw noprint' });
-    let res = null, guardado = null; // res: cifras calculadas del periodo; guardado: corte ya guardado que se muestra
+    let estadoDia = null;
 
     const fila = (c, v, clase = '') => e('tr', { class: clase }, e('td', {}, c), e('td', { class: 'n' }, v));
-    function pintarHoja(c) {
-      const filas = [fila('Fondo inicial (con lo que se abre la caja)', costo(c.fondo_inicial)),
-        fila(`(+) Ventas cobradas en el periodo · ${c.pedidos} pedido${c.pedidos === 1 ? '' : 's'}`, costo(c.ventas)),
-        ...c.desglose.map((d) => e('tr', {}, e('td', { style: 'padding-left:28px' }, `${d.metodo} (${d.pedidos})`), e('td', { class: 'n' }, costo(d.monto)))),
-        fila('(=) Saldo final esperado (con lo que se cierra)', costo(c.saldo_final), 'tot')];
-      if (c.contado != null) filas.push(fila('Monto contado al cierre', costo(c.contado)), fila('Diferencia (contado − esperado)', costo(c.diferencia), 'tot'));
+    function pintarHoja() {
+      const { corte, resumen } = estadoDia;
+      if (!corte) { hoja.replaceChildren(); return; }
+      const cerrado = corte.estado === 'cerrado';
+      const r = cerrado ? corte : { ...resumen, desglose: resumen.desglose };
+      const saldo = cerrado ? corte.saldo_final : Math.round((corte.fondo_inicial + resumen.ventas) * 100) / 100;
+      const filas = [fila('Fondo inicial (con lo que se abrió la caja)', costo(corte.fondo_inicial)),
+        fila(`(+) Ventas cobradas en el día · ${r.pedidos} pedido${r.pedidos === 1 ? '' : 's'}${cerrado ? '' : ' hasta ahora'}`, costo(r.ventas)),
+        ...r.desglose.map((d) => e('tr', {}, e('td', { style: 'padding-left:28px' }, `${d.metodo} (${d.pedidos})`), e('td', { class: 'n' }, costo(d.monto)))),
+        fila(cerrado ? '(=) Saldo final esperado' : '(=) Saldo final esperado (al momento)', costo(saldo), 'tot')];
+      if (cerrado) filas.push(fila('Cantidad final con la que se cierra', costo(corte.contado)), fila('Diferencia (cantidad final − esperado)', costo(corte.diferencia), 'tot'));
       hoja.replaceChildren(
         e('h3', {}, 'EN COMBO · Corte de caja'),
-        e('p', {}, c.folio ? e('strong', {}, 'Folio ' + c.folio + ' · ') : e('em', {}, 'Vista previa (sin guardar) · '), 'Periodo: ' + periodoTxt(c.desde, c.hasta)),
+        e('p', {}, e('strong', {}, `Folio ${corte.folio} · `), fechaLarga(corte.fecha), cerrado ? null : e('em', {}, ' · Caja abierta (vista previa, aún sin cerrar)')),
         e('table', { class: 'contable', 'aria-label': 'Corte de caja' }, e('thead', {}, e('tr', {}, e('th', {}, 'Concepto'), e('th', { class: 'n' }, 'Importe (MXN)'))), e('tbody', {}, ...filas)),
-        c.notas ? e('p', {}, 'Notas: ' + c.notas) : null,
-        c.folio ? e('p', { class: 'mu' }, `Elaborado por ${c.hecho_por || '—'} · ${new Date(c.creado_en).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}`) : null,
-        e('div', { class: 'firmas' }, e('div', {}, e('span', {}, 'Elaboró')), e('div', {}, e('span', {}, 'Revisó'))));
+        corte.notas ? e('p', {}, 'Notas: ' + corte.notas) : null,
+        e('p', { class: 'mu' }, `Abrió: ${corte.abrio || '—'} · ${cuando(corte.abierto_en)}`, cerrado ? ` · Cerró: ${corte.hecho_por || '—'} · ${cuando(corte.cerrado_en)}` : ''),
+        cerrado ? e('div', { class: 'firmas' }, e('div', {}, e('span', {}, 'Elaboró')), e('div', {}, e('span', {}, 'Revisó'))) : null);
     }
-    const num = (i) => { const v = i.value.trim(); return v === '' ? null : Number(v); };
-    function vistaPrevia() {
-      if (guardado || !res) return;
-      const fondo = Number(inFondo.value) || 0, cnt = num(inContado), saldo = Math.round((fondo + res.ventas) * 100) / 100;
-      pintarHoja({ ...res, fondo_inicial: fondo, saldo_final: saldo, contado: cnt, diferencia: cnt == null ? null : Math.round((cnt - saldo) * 100) / 100, notas: inNotas.value.trim() });
+
+    function pintarPanel() {
+      const { fecha, corte } = estadoDia;
+      const notas = e('input', { type: 'text', maxlength: '200', placeholder: 'Opcional', 'aria-label': 'Notas del corte', style: 'min-width:220px' });
+      const enviar = async (ev, ruta, body, listo) => {
+        ev.preventDefault(); err.replaceChildren(); msg.textContent = '';
+        const b = ev.target.querySelector('button[type=submit]'); b.disabled = true;
+        try { await api(ruta, { method: 'POST', body }); msg.textContent = listo; await cargar(true); } catch (er) { err.replaceChildren(e('div', {}, er.message)); b.disabled = false; }
+      };
+      if (!corte) {
+        const fondo = e('input', { type: 'number', min: '0', step: '0.01', placeholder: '0.00', 'aria-label': 'Con cuánto abres (fondo inicial)', style: 'width:160px' });
+        panel.replaceChildren(e('form', { class: 'card', 'aria-label': 'Abrir caja', novalidate: true, onsubmit: (ev) => enviar(ev, '/caja/abrir', { fecha, fondo_inicial: fondo.value, notas: notas.value }, 'Caja abierta. Queda guardada: regresa a esta pantalla cuando vayas a cerrar.') },
+          e('h3', {}, `Abrir la caja · ${fechaLarga(fecha)}`),
+          e('p', { class: 'mu' }, 'Paso 1 de 2. Escribe con cuánto dinero abres el negocio. Se guarda; al terminar el día regresas aquí para cerrar la caja.'),
+          e('div', { class: 'row filtros', style: 'align-items:end;flex-wrap:wrap;gap:12px' }, e('label', {}, 'Con cuánto abres (MXN)', fondo), e('label', {}, 'Notas', notas)),
+          e('div', { style: 'margin-top:10px' }, e('button', { class: 'btn', type: 'submit' }, 'Abrir caja'))));
+      } else if (corte.estado === 'abierto') {
+        const final = e('input', { type: 'number', min: '0', step: '0.01', placeholder: '0.00', 'aria-label': 'Cantidad final con la que cierras', style: 'width:160px' });
+        panel.replaceChildren(e('form', { class: 'card', 'aria-label': 'Cerrar caja', novalidate: true, onsubmit: (ev) => enviar(ev, `/caja/${corte.id}/cerrar`, { contado: final.value, notas: notas.value }, 'Caja cerrada. Ya puedes imprimir el corte.') },
+          e('h3', {}, `Caja abierta · ${fechaLarga(fecha)}`),
+          e('p', {}, 'Abriste con ', e('strong', {}, costo(corte.fondo_inicial)), ` (${cuando(corte.abierto_en)}).`),
+          e('p', { class: 'mu' }, 'Paso 2 de 2. Al terminar el día, escribe la cantidad final con la que cierras. El sistema suma las ventas cobradas, calcula cuánto debería haber y te muestra la diferencia. Después podrás imprimir el corte.'),
+          e('div', { class: 'row filtros', style: 'align-items:end;flex-wrap:wrap;gap:12px' }, e('label', {}, 'Cantidad final (MXN)', final), e('label', {}, 'Notas', notas)),
+          e('div', { style: 'margin-top:10px' }, e('button', { class: 'btn', type: 'submit' }, 'Cerrar caja y calcular')),
+          e('p', { class: 'mu' }, 'La impresión se habilita cuando cierres la caja.')));
+      } else {
+        panel.replaceChildren(e('div', { class: 'card' }, e('h3', {}, `Caja cerrada · ${fechaLarga(fecha)}`),
+          e('p', { class: 'mu' }, 'El corte está completo. Puedes imprimirlo cuando quieras.'),
+          e('button', { class: 'btn', type: 'button', onclick: () => window.print() }, 'Imprimir corte de caja')));
+      }
     }
-    async function calcular() {
-      guardado = null; err.replaceChildren();
-      if (!inDesde.value || !inHasta.value) { err.replaceChildren(e('div', {}, 'Elige la fecha inicial y la final.')); return; }
-      try { res = await api(`/caja/resumen?desde=${inDesde.value}&hasta=${inHasta.value}`); vistaPrevia(); } catch (er) { res = null; hoja.replaceChildren(); err.replaceChildren(e('div', {}, er.message)); }
+
+    async function cargar(conHistorial) {
+      try {
+        estadoDia = await api('/caja/dia?fecha=' + encodeURIComponent(inDia.value));
+        pintarPanel(); pintarHoja();
+      } catch (er) { estadoDia = null; panel.replaceChildren(); hoja.replaceChildren(); err.replaceChildren(e('div', {}, er.message)); }
+      if (conHistorial !== false) await historial();
     }
     async function historial() {
       try {
         const { cortes } = await api('/caja');
-        hist.replaceChildren(cortes.length ? e('table', {}, e('thead', {}, e('tr', {}, ['Folio', 'Periodo', 'Fondo inicial', 'Ventas', 'Saldo final', 'Diferencia', ''].map((x) => e('th', {}, x)))),
-          e('tbody', {}, ...cortes.map((c) => e('tr', {}, e('td', {}, c.folio), e('td', {}, periodoTxt(c.desde, c.hasta)), e('td', {}, costo(c.fondo_inicial)), e('td', {}, costo(c.ventas)), e('td', {}, costo(c.saldo_final)), e('td', {}, c.diferencia == null ? '—' : costo(c.diferencia)),
-            e('td', { class: 'acc' }, e('button', { class: 'mini', type: 'button', 'aria-label': `Ver e imprimir ${c.folio}`, onclick: () => { guardado = c; pintarHoja(c); hoja.scrollIntoView && hoja.scrollIntoView(); setTimeout(() => window.print(), 50); } }, 'Ver / imprimir')))))) : e('p', { class: 'mu' }, 'Todavía no hay cortes guardados.'));
+        const pend = cortes.filter((c) => c.estado === 'abierto' && c.fecha !== inDia.value);
+        aviso.replaceChildren(...pend.map((c) => e('div', { class: 'card', role: 'status' }, `Tienes una caja abierta sin cerrar del ${fechaLarga(c.fecha)}. `, e('button', { class: 'mini', type: 'button', onclick: () => { inDia.value = c.fecha; cargar(); } }, 'Ir a ese día'))));
+        hist.replaceChildren(cortes.length ? e('table', {}, e('thead', {}, e('tr', {}, ['Folio', 'Día', 'Estado', 'Abrió con', 'Ventas', 'Cerró con', 'Diferencia', ''].map((x) => e('th', {}, x)))),
+          e('tbody', {}, ...cortes.map((c) => e('tr', {}, e('td', {}, c.folio), e('td', {}, fechaLarga(c.fecha)), e('td', {}, c.estado === 'abierto' ? 'Abierta' : 'Cerrada'), e('td', {}, costo(c.fondo_inicial)),
+            e('td', {}, c.ventas == null ? '—' : costo(c.ventas)), e('td', {}, c.contado == null ? '—' : costo(c.contado)), e('td', {}, c.diferencia == null ? '—' : costo(c.diferencia)),
+            e('td', { class: 'acc' }, e('button', { class: 'mini', type: 'button', 'aria-label': `${c.estado === 'abierto' ? 'Cerrar' : 'Ver e imprimir'} ${c.folio}`, onclick: async () => { inDia.value = c.fecha; await cargar(false); if (c.estado === 'cerrado') { hoja.scrollIntoView && hoja.scrollIntoView(); setTimeout(() => window.print(), 50); } } }, c.estado === 'abierto' ? 'Cerrar caja' : 'Ver / imprimir')))))) : e('p', { class: 'mu' }, 'Todavía no hay cortes.'));
       } catch (er) { hist.replaceChildren(e('p', { class: 'mu' }, er.message)); }
     }
-    const btnGuardar = e('button', { class: 'btn', type: 'submit' }, 'Guardar corte e imprimir');
-    const form = e('form', { class: 'card noprint', 'aria-label': 'Datos del corte', novalidate: true, onsubmit: async (ev) => {
-      ev.preventDefault(); msg.textContent = ''; err.replaceChildren(); btnGuardar.disabled = true;
-      try {
-        const r = await api('/caja', { method: 'POST', body: { desde: inDesde.value, hasta: inHasta.value, fondo_inicial: inFondo.value, contado: inContado.value, notas: inNotas.value } });
-        guardado = r.corte; pintarHoja(r.corte); msg.textContent = `Corte ${r.corte.folio} guardado.`; await historial();
-        setTimeout(() => window.print(), 50);
-      } catch (er) { err.replaceChildren(e('div', {}, er.message)); }
-      btnGuardar.disabled = false;
-    } },
-      e('div', { class: 'row filtros', style: 'align-items:end;flex-wrap:wrap;gap:12px' },
-        e('label', {}, 'Desde', inDesde), e('label', {}, 'Hasta', inHasta),
-        e('label', {}, 'Con cuánto abres (MXN)', e('small', { class: 'mu', style: 'display:block' }, 'Dinero con el que inicia el día'), inFondo), e('label', {}, 'Contado al cierre (MXN)', e('small', { class: 'mu', style: 'display:block' }, 'Opcional: lo que realmente cuentas'), inContado), e('label', {}, 'Notas', inNotas)),
-      e('div', { style: 'margin-top:10px;display:flex;gap:10px;flex-wrap:wrap' }, btnGuardar, e('button', { class: 'btn s', type: 'button', onclick: () => window.print() }, 'Imprimir vista actual')));
-    [inDesde, inHasta].forEach((i) => i.addEventListener('change', calcular));
-    [inFondo, inContado, inNotas].forEach((i) => i.addEventListener('input', () => { if (guardado) { guardado = null; } vistaPrevia(); }));
+    inDia.addEventListener('change', () => { err.replaceChildren(); msg.textContent = ''; cargar(false); });
 
-    cont.append(e('p', { class: 'mu noprint' }, 'Cómo funciona: 1) elige el periodo; 2) escribe con cuánto dinero abres; el sistema suma lo cobrado y te dice con cuánto deberías cerrar (apertura + ventas). 3) Si al cerrar cuentas lo que realmente tienes, escríbelo en “Contado al cierre” (es opcional) y verás si hay diferencia. Al guardar se genera un folio y se abre la impresión.'),
-      err, msg, form, hoja, e('h3', { class: 'noprint', style: 'margin-top:14px' }, 'Cortes guardados'), hist);
-    calcular(); historial();
+    cont.append(e('p', { class: 'mu noprint' }, 'Corte de caja en dos pasos: 1) elige el día y anota con cuánto abres; 2) al terminar, regresa, escribe la cantidad final y el sistema hace las cuentas. Con la caja cerrada podrás imprimir el corte.'),
+      aviso, err, msg, e('div', { class: 'card noprint' }, e('label', {}, 'Día del corte', inDia)), panel, hoja,
+      e('h3', { class: 'noprint', style: 'margin-top:14px' }, 'Cortes'), hist);
+    cargar();
   });
 })();

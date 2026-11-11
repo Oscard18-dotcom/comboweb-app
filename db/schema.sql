@@ -300,3 +300,14 @@ CREATE TABLE IF NOT EXISTS cortes_caja (
   usuario_id      INTEGER REFERENCES usuarios(id),
   creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Corte de caja en dos pasos: se ABRE con el fondo inicial (queda guardado) y después se CIERRA con la cantidad final
+ALTER TABLE cortes_caja ALTER COLUMN ventas DROP NOT NULL;
+ALTER TABLE cortes_caja ALTER COLUMN pedidos DROP NOT NULL;
+ALTER TABLE cortes_caja ALTER COLUMN saldo_final DROP NOT NULL;
+ALTER TABLE cortes_caja ADD COLUMN IF NOT EXISTS estado VARCHAR(10) NOT NULL DEFAULT 'cerrado' CHECK (estado IN ('abierto','cerrado'));
+ALTER TABLE cortes_caja ADD COLUMN IF NOT EXISTS abierto_por INTEGER REFERENCES usuarios(id);
+ALTER TABLE cortes_caja ADD COLUMN IF NOT EXISTS cerrado_en TIMESTAMPTZ;
+UPDATE cortes_caja SET cerrado_en = creado_en WHERE estado = 'cerrado' AND cerrado_en IS NULL;
+-- A lo más una caja abierta por día
+CREATE UNIQUE INDEX IF NOT EXISTS cortes_caja_abierto_dia_idx ON cortes_caja(desde) WHERE estado = 'abierto';

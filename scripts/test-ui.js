@@ -317,34 +317,50 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     [...(await until(() => filaT(nomC2) && [...filaT(nomC2).querySelectorAll('button')].some((x) => x.textContent === 'Sí, eliminar') && filaT(nomC2)) || filaT(nomC2)).querySelectorAll('button')].find((x) => x.textContent === 'Sí, eliminar').click();
     t('combos: confirmar elimina el combo de la lista y de la base', await until(async () => !(await combosBD(nomC2))) && await until(() => !filaT(nomC2)) && limpio(w));
 
-    /* ---------- ADMIN: corte de caja ---------- */
+    /* ---------- ADMIN: corte de caja (abrir y cerrar en dos pasos) ---------- */
+    const hoyC = svc.todayMX();
+    await db.query('DELETE FROM cortes_caja WHERE desde=$1', [hoyC]);
     w.__prints = 0; w.print = () => { w.__prints++; };
     pest(w, 'Corte de caja').click();
-    const hojaTxt = () => (w.document.querySelector('#staff .hoja') || { textContent: '' }).textContent;
-    t('corte de caja: muestra la hoja con fondo inicial, ventas y saldo final esperado (vista previa)', await until(() => /Fondo inicial/.test(hojaTxt()) && /Ventas cobradas/.test(hojaTxt()) && /Saldo final esperado/.test(hojaTxt()) && /Vista previa/.test(hojaTxt())));
-    const cambiarC = (lbl, v) => { const i = w.document.querySelector(`#staff [aria-label="${lbl}"]`); i.value = v; i.dispatchEvent(new w.Event('input', { bubbles: true })); };
-    cambiarC('Con cuánto inicias (fondo inicial)', '1000');
-    const hoyC = svc.todayMX();
+    const sTxt = (sel) => (w.document.querySelector(sel) || { textContent: '' }).textContent;
+    const cAria = (l) => w.document.querySelector(`#staff [aria-label="${l}"]`);
+    const llenarC = (l, v) => { const i = cAria(l); i.value = v; i.dispatchEvent(new w.Event('input', { bubbles: true })); };
+    const botonC = (txt) => [...w.document.querySelectorAll('#staff button')].find((b) => b.textContent === txt);
+    t('corte de caja: primero se elige el día y pide abrir la caja (con cuánto abres)', await until(() => !!cAria('Día del corte') && !!w.document.querySelector('#staff form[aria-label="Abrir caja"]')) && !!cAria('Con cuánto abres (fondo inicial)') && cAria('Día del corte').value === hoyC);
+    t('corte de caja: sin abrir no hay hoja, ni botón de imprimir ni de cerrar', !w.document.querySelector('#staff .hoja table') && !botonC('Imprimir corte de caja') && !botonC('Cerrar caja y calcular'));
+    enviarForm(w, w.document.querySelector('#staff form[aria-label="Abrir caja"]'));
+    t('corte de caja: abrir sin monto muestra el error y no guarda nada', await until(() => /con cuánto dinero abres/i.test($('#staff .errbox').textContent)) && (await db.query('SELECT count(*)::int n FROM cortes_caja WHERE desde=$1', [hoyC])).rows[0].n === 0);
+    llenarC('Con cuánto abres (fondo inicial)', '1000');
+    enviarForm(w, w.document.querySelector('#staff form[aria-label="Abrir caja"]'));
+    t('corte de caja: "Abrir caja" guarda la apertura con el monto', await until(async () => { const c = (await db.query("SELECT estado,fondo_inicial FROM cortes_caja WHERE desde=$1", [hoyC])).rows[0]; return c && c.estado === 'abierto' && Number(c.fondo_inicial) === 1000; }));
+    t('corte de caja: pasa al paso 2 (cerrar) y muestra la vista previa con lo ya abierto', await until(() => !!w.document.querySelector('#staff form[aria-label="Cerrar caja"]') && /Caja abierta/.test(sTxt('#staff .hoja')) && sTxt('#staff .hoja').includes('$1,000.00')));
+    t('corte de caja: con la caja abierta NO se puede imprimir todavía', !botonC('Imprimir corte de caja') && !botonC('Imprimir vista actual') && /impresión se habilita cuando cierres/i.test($('#staff').textContent));
+    // Salir y volver a entrar: la apertura sigue guardada
+    pest(w, 'Dashboard').click(); await sleep(300); pest(w, 'Corte de caja').click();
+    t('corte de caja: al volver a entrar la caja sigue abierta con el monto guardado', await until(() => !!w.document.querySelector('#staff form[aria-label="Cerrar caja"]') && /Abriste con/.test($('#staff').textContent) && $('#staff').textContent.includes('$1,000.00')));
     const ventasHoy = Number((await db.query("SELECT coalesce(sum(monto),0) m FROM pagos WHERE estado='aprobado' AND (creado_en AT TIME ZONE 'America/Mexico_City')::date=$1", [hoyC])).rows[0].m);
     const mxn = (n) => n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
-    t('corte de caja: la hoja muestra el fondo y el saldo final = fondo + ventas', await until(() => hojaTxt().includes(mxn(1000)) && hojaTxt().includes(mxn(1000 + ventasHoy))));
-    cambiarC('Monto contado al cierre', String(1000 + ventasHoy + 5));
-    t('corte de caja: al escribir el monto contado aparece la diferencia', await until(() => /Diferencia/.test(hojaTxt()) && hojaTxt().includes(mxn(5))));
-    cambiarC('Notas del corte', `Corte UI ${R}`);
-    enviarForm(w, w.document.querySelector('#staff form[aria-label="Datos del corte"]'));
-    t('corte de caja: guardar genera folio, lo muestra en la hoja y abre la impresión', await until(() => /Folio CC-\d{4,}/.test(hojaTxt()) && w.__prints >= 1) && /Corte UI/.test(hojaTxt()) && /Elaboró/.test(hojaTxt()) && /Revisó/.test(hojaTxt()));
-    const corteUI = (await db.query("SELECT id,fondo_inicial,contado FROM cortes_caja WHERE notas=$1", [`Corte UI ${R}`])).rows[0];
-    t('corte de caja: el corte quedó guardado en la base con el fondo y el monto contado', corteUI && Number(corteUI.fondo_inicial) === 1000 && Number(corteUI.contado) === 1000 + ventasHoy + 5);
-    t('corte de caja: aparece en "Cortes guardados"', await until(() => [...w.document.querySelectorAll('#staff table')].some((tb) => tb.textContent.includes('CC-') && tb.textContent.includes('Ver / imprimir'))));
-    const prints0 = w.__prints;
+    enviarForm(w, w.document.querySelector('#staff form[aria-label="Cerrar caja"]'));
+    t('corte de caja: cerrar sin la cantidad final muestra el error y sigue abierta', await until(() => /cantidad final/i.test($('#staff .errbox').textContent)) && (await db.query("SELECT estado FROM cortes_caja WHERE desde=$1", [hoyC])).rows[0].estado === 'abierto');
+    llenarC('Cantidad final con la que cierras', String(1000 + ventasHoy + 5));
+    enviarForm(w, w.document.querySelector('#staff form[aria-label="Cerrar caja"]'));
+    t('corte de caja: "Cerrar caja y calcular" hace las cuentas (esperado y diferencia) y guarda', await until(async () => { const c = (await db.query("SELECT estado,saldo_final,diferencia,contado FROM cortes_caja WHERE desde=$1", [hoyC])).rows[0]; return c.estado === 'cerrado' && Math.abs(Number(c.saldo_final) - (1000 + ventasHoy)) < 0.005 && Math.abs(Number(c.diferencia) - 5) < 0.005; }));
+    t('corte de caja: la hoja muestra fondo, ventas, saldo esperado, cantidad final y diferencia', await until(() => ['Fondo inicial', 'Ventas cobradas', 'Saldo final esperado', 'Cantidad final', 'Diferencia', mxn(1000 + ventasHoy), mxn(5)].every((x) => sTxt('#staff .hoja').includes(x)) && /Elaboró/.test(sTxt('#staff .hoja'))));
+    t('corte de caja: ya cerrada, aparece el botón para imprimir y ya no el de cerrar', await until(() => !!botonC('Imprimir corte de caja')) && !w.document.querySelector('#staff form[aria-label="Cerrar caja"]') && !botonC('Cerrar caja y calcular'));
+    botonC('Imprimir corte de caja').click();
+    t('corte de caja: imprimir manda a la impresora', w.__prints === 1);
+    t('corte de caja: lo que no es la hoja se oculta al imprimir', !!w.document.querySelector('#staff .seg.noprint') && !!w.document.querySelector('#staff .errbox.noprint') && limpio(w));
+    t('corte de caja: el historial lista el corte cerrado con "Ver / imprimir"', await until(() => [...w.document.querySelectorAll('#staff table')].some((tb) => tb.textContent.includes('CC-') && tb.textContent.includes('Cerrada') && tb.textContent.includes('Ver / imprimir'))));
+    const p0 = w.__prints;
     [...w.document.querySelectorAll('#staff button')].find((b) => /^Ver e imprimir CC-/.test(b.getAttribute('aria-label') || '')).click();
-    t('corte de caja: "Ver / imprimir" abre la hoja del corte y manda a imprimir', await until(() => w.__prints > prints0));
-    t('corte de caja: botón de imprimir la vista actual', !!btnTxt('Imprimir vista actual'));
-    t('corte de caja: lo que no es la hoja se oculta al imprimir', !!w.document.querySelector('#staff form.noprint') && !!w.document.querySelector('#staff .seg.noprint') && limpio(w));
-    cambiarC('Hasta', '2020-01-01');
-    w.document.querySelector('#staff [aria-label="Hasta"]').dispatchEvent(new w.Event('change', { bubbles: true }));
-    t('corte de caja: un periodo con fecha final anterior a la inicial muestra el error', await until(() => /fecha inicial debe ser anterior/i.test($('#staff .errbox').textContent)));
-    await db.query('DELETE FROM cortes_caja WHERE id=$1', [corteUI.id]);
+    t('corte de caja: "Ver / imprimir" del historial manda a imprimir', await until(() => w.__prints > p0));
+    // Día anterior abierto sin cerrar → aviso
+    const ayerC = svc.addDays(hoyC, -1);
+    await db.query('DELETE FROM cortes_caja WHERE desde=$1', [ayerC]);
+    await db.query("INSERT INTO cortes_caja(desde,hasta,fondo_inicial,estado) VALUES($1,$1,200,'abierto')", [ayerC]);
+    pest(w, 'Dashboard').click(); await sleep(200); pest(w, 'Corte de caja').click();
+    t('corte de caja: avisa si quedó una caja abierta sin cerrar de otro día y permite ir a ella', await until(() => /caja abierta sin cerrar/i.test($('#staff').textContent)) && (() => { [...w.document.querySelectorAll('#staff button')].find((b) => b.textContent === 'Ir a ese día').click(); return true; })() && await until(() => cAria('Día del corte').value === ayerC && !!w.document.querySelector('#staff form[aria-label="Cerrar caja"]')));
+    await db.query('DELETE FROM cortes_caja WHERE desde = ANY($1)', [[hoyC, ayerC]]);
 
     /* ---------- ADMIN: pedidos a proveedor (Sprint 7) ---------- */
     pest(w, 'Dashboard').click();

@@ -295,16 +295,19 @@ Usa cualquier nombre, un vencimiento futuro (p. ej. 12/30) y un CVV de 3 dígito
 
 ## Corte de caja
 
-En **Corte de caja** (solo administrador): elige el periodo (por defecto hoy), escribe **con cuánto abres** (fondo inicial) y el sistema suma los pagos aprobados del periodo, desglosados por tarjeta, para mostrar **con cuánto terminas** (saldo final esperado = fondo inicial + ventas cobradas). Opcionalmente escribes el monto contado al cierre y se calcula la diferencia.
+En **Corte de caja** (solo administrador) se trabaja en **dos pasos**:
 
-- **Guardar corte e imprimir:** genera un folio `CC-####`, lo guarda y abre la impresión. La hoja imprime solo el corte (concepto/importe en formato contable, con espacios de firma “Elaboró” y “Revisó”).
-- **Cortes guardados:** historial con **Ver / imprimir** para reimprimir cualquier corte con sus cifras originales (un corte guardado no cambia aunque entren pagos nuevos).
-- Las ventas siempre las calcula el servidor; un corte abarca como máximo 3 meses y no puede llegar a fechas futuras.
+1. **Abrir:** eliges el **día** (por defecto hoy) y anotas **con cuánto abres** (fondo inicial). Se guarda como una caja *abierta* con su folio `CC-####`.
+2. **Cerrar:** más tarde (al terminar el día) vuelves a entrar, el día aparece como caja abierta y escribes la **cantidad final** con la que cierras. El sistema suma los pagos aprobados del día (desglosados por tarjeta), calcula el **saldo final esperado** (fondo inicial + ventas) y la **diferencia** (cantidad final − esperado).
+3. **Imprimir:** el botón *Imprimir corte de caja* solo aparece con la caja **cerrada**. La hoja imprime solo el corte, en formato contable y con firmas “Elaboró” y “Revisó”.
+
+Reglas: una sola caja por día (no se abre dos veces ni se reabre una cerrada); no se pueden usar días futuros; si queda una caja abierta de otro día, la pantalla avisa y lleva a ella; el historial permite reimprimir cualquier corte cerrado con sus cifras originales (no cambian aunque entren pagos nuevos). Las ventas siempre las calcula el servidor.
 
 | Ruta | Quién | Para qué |
 |---|---|---|
-| GET `/api/caja/resumen?desde&hasta` | Administrador | Calcula ventas del periodo |
-| POST `/api/caja` | Administrador | Guarda el corte |
+| GET `/api/caja/dia?fecha` | Administrador | Corte del día (si existe) y ventas del día |
+| POST `/api/caja/abrir` | Administrador | Paso 1: abre con el fondo inicial |
+| POST `/api/caja/:id/cerrar` | Administrador | Paso 2: cierra con la cantidad final |
 | GET `/api/caja` · `/api/caja/:id` | Administrador | Historial y detalle |
 
 Pruebas: `npm run test:caja`.
