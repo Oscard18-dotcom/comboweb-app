@@ -68,7 +68,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     r = await call('POST', '/api/pedidos/checkout', body()); t('pagar sin sesión sigue siendo 401', r.s === 401);
 
     /* ===== Compra completa con dirección ===== */
-    const compra = async (o, tok = cli) => { const c = await call('POST', '/api/pedidos/checkout', body(o), tok); if (c.s !== 201) return { c }; const a = await call('POST', `/api/pagos/simulado/${c.j.checkout_id}/aprobar`, undefined, tok); return { c, a, id: a.j.pedido_id }; };
+    const compra = async (o, tok = cli) => { const c = await call('POST', '/api/pedidos/checkout', body(o), tok); if (c.s !== 201) return { c }; const a = await call('POST', `/api/pagos/simulado/${c.j.checkout_id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, tok); return { c, a, id: a.j.pedido_id }; };
     let P = await compra({ direccion: { ...DIR, colonia: 'las flores', referencias: 'Portón\u0007 negro\n  frente al parque' } });
     t('checkout con dirección válida → 201 y pago aprobado → pedido', P.c.s === 201 && P.a.j.estado === 'pagado' && !!P.id, JSON.stringify(P.c.j));
     const idPrimero = P.id;

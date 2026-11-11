@@ -46,7 +46,7 @@ const mondayOf = (iso) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate
     const cat = (await call('GET', '/api/catalogo')).j; const P = (n) => cat.productos.find((p) => p.nombre === n).id; const PRES = undefined;
     const comprar = async (cl, items, fecha, hora, dedicatoria) => {
       const ck = await call('POST', '/api/pedidos/checkout', { items, presentacion_id: PRES, fecha, hora, dedicatoria, direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle de Prueba', num_ext: '12' } }, cl.token);
-      const ap = await call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, undefined, cl.token);
+      const ap = await call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, cl.token);
       return ap.j.pedido_id;
     };
     const drenar = async () => { for (let i = 0; i < 80; i++) { const n = (await q("SELECT count(*)::int n FROM notificaciones WHERE estado IN ('pendiente','enviando') AND cliente_id = ANY($1)", [clientes]))[0].n; if (!n) return; await notif.enviarPendientes(); await sleep(40); } };

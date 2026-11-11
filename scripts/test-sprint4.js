@@ -108,7 +108,7 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
     const comprar = async (items, fecha) => {
       const ck = await call('POST', '/api/pedidos/checkout', { items, presentacion_id: PRES, fecha, hora: '12:00', direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle de Prueba', num_ext: '12' } }, cliente);
       if (ck.s !== 201) return ck;
-      return call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, undefined, cliente);
+      return call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, cliente);
     };
     const cafe = await porNombre('Café molido'); await call('POST', `/api/inventario/${cafe.id}/movimientos`, { tipo: 'ajuste', cantidad: cafe.stock_minimo + 10 }, almacen);
     r = await comprar([{ producto_id: P('Café americano'), cantidad: 1 }], dia(0)); // 18 g

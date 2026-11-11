@@ -37,7 +37,7 @@ const hay = (r, codigo) => (r.j.errores || []).some((e) => e.codigo === codigo);
     const PRES = undefined;
     const combo = (o = {}) => ({ items: [{ producto_id: P('Cupcake'), cantidad: 6 }, { producto_id: P('Café latte'), cantidad: 2 }], presentacion_id: PRES, fecha: dia(0), hora: '12:00', dedicatoria: 'Feliz cumpleaños, Ana', direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle de Prueba', num_ext: '12' }, ...o });
     const nuevoCheckout = async (tok, o) => { const r = await call('POST', '/api/pedidos/checkout', combo(o), tok); return r; };
-    const aprobar = (id, tok) => call('POST', `/api/pagos/simulado/${id}/aprobar`, undefined, tok);
+    const aprobar = (id, tok) => call('POST', `/api/pagos/simulado/${id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, tok);
 
     /* ----- Disponibilidad y cotización ----- */
     let r = await call('GET', `/api/pedidos/disponibilidad?fecha=${dia(0)}`);
@@ -82,7 +82,7 @@ const hay = (r, codigo) => (r.j.errores || []).some((e) => e.codigo === codigo);
     t('checkout creado con enlace de pago', r.s === 201 && r.j.checkout_id && r.j.url.includes('pago-simulado'));
     const ck1 = r.j.checkout_id;
     t('antes de pagar NO existe pedido ni se toca el inventario', (await q('SELECT count(*)::int n FROM pedidos WHERE cliente_id=$1', [clientes[0]]))[0].n === 0 && (await stock('Harina')) === antes.Harina);
-    r = await call('POST', `/api/pagos/simulado/${ck1}/aprobar`, undefined, tB); t('otro cliente no puede aprobar mi pago → 404', r.s === 404);
+    r = await call('POST', `/api/pagos/simulado/${ck1}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, tB); t('otro cliente no puede aprobar mi pago → 404', r.s === 404);
     r = await call('GET', `/api/pedidos/checkout/${ck1}`, undefined, tB); t('otro cliente no ve mi checkout → 404', r.s === 404);
     r = await aprobar(ck1, tA); t('pago aprobado → pedido creado', r.s === 200 && r.j.estado === 'pagado' && r.j.pedido_id);
     const pid1 = r.j.pedido_id;

@@ -279,3 +279,32 @@ En **Catálogo y precios → Combos** (solo administrador):
 | DELETE `/api/admin/combos/:id` | Administrador | Elimina |
 
 Pruebas: `npm run test:combos-admin`.
+
+## Pasarela de pago simulada con tarjeta
+
+La pantalla de pago (`/pago-simulado.html`) pide **nombre del titular, número de tarjeta, vencimiento y CVV**, valida los datos como una pasarela real (número con 13 a 19 dígitos y verificación Luhn, fecha MM/AA no vencida, CVV de 3 dígitos o 4 en American Express) y avisa claramente que es una simulación: **no se cobra nada**.
+
+| Tarjeta de prueba | Resultado |
+|---|---|
+| 4242 4242 4242 4242 | Pago aprobado (Visa) |
+| 5555 5555 5555 4444 | Pago aprobado (Mastercard) |
+| 4000 0000 0000 0002 | Rechazada por el banco (se puede reintentar) |
+| 4000 0000 0000 9995 | Fondos insuficientes (se puede reintentar) |
+
+Usa cualquier nombre, un vencimiento futuro (p. ej. 12/30) y un CVV de 3 dígitos. **El número completo y el CVV nunca se guardan**: del pago solo queda la marca y los últimos 4 dígitos (p. ej. “Visa •••• 4242”). En producción real esta pantalla se sustituye por Stripe (`PAYMENT_PROVIDER=stripe`).
+
+## Corte de caja
+
+En **Corte de caja** (solo administrador): elige el periodo (por defecto hoy), escribe **con cuánto inicias** (fondo inicial) y el sistema suma los pagos aprobados del periodo, desglosados por tarjeta, para mostrar **con cuánto terminas** (saldo final esperado = fondo inicial + ventas cobradas). Opcionalmente escribes el monto contado al cierre y se calcula la diferencia.
+
+- **Guardar corte e imprimir:** genera un folio `CC-####`, lo guarda y abre la impresión. La hoja imprime solo el corte (concepto/importe en formato contable, con espacios de firma “Elaboró” y “Revisó”).
+- **Cortes guardados:** historial con **Ver / imprimir** para reimprimir cualquier corte con sus cifras originales (un corte guardado no cambia aunque entren pagos nuevos).
+- Las ventas siempre las calcula el servidor; un corte abarca como máximo 3 meses y no puede llegar a fechas futuras.
+
+| Ruta | Quién | Para qué |
+|---|---|---|
+| GET `/api/caja/resumen?desde&hasta` | Administrador | Calcula ventas del periodo |
+| POST `/api/caja` | Administrador | Guarda el corte |
+| GET `/api/caja` · `/api/caja/:id` | Administrador | Historial y detalle |
+
+Pruebas: `npm run test:caja`.

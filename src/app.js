@@ -25,6 +25,7 @@ app.use('/api/reportes', require('./routes/reportes'));
 app.use('/api/notificaciones', require('./routes/notificaciones'));
 app.use('/api/avisos', require('./routes/avisos'));
 app.use('/api/pagos', require('./routes/pagos'));
+app.use('/api/caja', require('./routes/caja'));
 app.use('/api/proveedores', require('./routes/proveedores'));
 app.use('/api/pedidos-proveedor', require('./routes/pedidosProveedor'));
 // Comprobación de salud para el hosting y el monitoreo (no revela detalles internos)

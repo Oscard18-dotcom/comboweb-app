@@ -27,7 +27,8 @@
     "test:sprint9": "node scripts/test-sprint9.js",
     "test:sprint10": "node scripts/test-sprint10.js",
     "test:combos": "node scripts/test-combos.js",
-    "test:combos-admin": "node scripts/test-combos-admin.js"
+    "test:combos-admin": "node scripts/test-combos-admin.js",
+    "test:caja": "node scripts/test-caja.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

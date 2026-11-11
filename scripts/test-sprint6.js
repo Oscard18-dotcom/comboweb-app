@@ -42,7 +42,7 @@ function rutas() {
 const PUBLICAS = new Set(['GET /api/catalogo', 'GET /api/catalogo/codigo-postal/:cp', 'GET /api/pedidos/disponibilidad', 'POST /api/pedidos/cotizar', 'POST /api/auth/login', 'POST /api/auth/register', 'POST /api/auth/olvide', 'POST /api/auth/restablecer', 'GET /api/salud', 'POST /api/pagos/webhook/stripe']);
 function clasifica(m, p) {
   if (PUBLICAS.has(`${m} ${p}`)) return { tipo: 'publica' };
-  if (['/api/admin', '/api/recetas', '/api/reportes', '/api/notificaciones', '/api/proveedores', '/api/pedidos-proveedor'].some((x) => p.startsWith(x))) return { tipo: 'roles', roles: ['admin'] };
+  if (['/api/admin', '/api/caja', '/api/recetas', '/api/reportes', '/api/notificaciones', '/api/proveedores', '/api/pedidos-proveedor'].some((x) => p.startsWith(x))) return { tipo: 'roles', roles: ['admin'] };
   if (p.startsWith('/api/inventario')) return { tipo: 'roles', roles: ['almacen', 'admin'] };
   if (p.startsWith('/api/cocina')) return { tipo: 'roles', roles: ['cocina', 'admin'] };
   if (p === '/api/pedidos/checkout' || p.startsWith('/api/pedidos/checkout/') || (m === 'GET' && p === '/api/pedidos') || p.startsWith('/api/pagos/simulado') || p.startsWith('/api/avisos')) return { tipo: 'roles', roles: ['cliente'] };
@@ -154,7 +154,7 @@ const concreta = (p) => p.replace('/checkout/:id', '/checkout/00000000-0000-4000
     t(`150 cotizaciones simultáneas sin un solo error (${Date.now() - t0} ms)`, cot.every((x) => x.s === 200 && x.j.ok));
     const comprar = async (i) => {
       const ck = await call('POST', '/api/pedidos/checkout', combo({ items: [{ producto_id: P('Galleta'), cantidad: 1 }], fecha: dia(1 + i), hora: '10:00' }), C.token);
-      return ck.s === 201 ? call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, undefined, C.token) : ck;
+      return ck.s === 201 ? call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, C.token) : ck;
     };
     const harinaAntesCompras = Number((await q("SELECT stock FROM insumos WHERE nombre='Harina'"))[0].stock), cajaAntesCompras = Number((await q("SELECT stock FROM insumos WHERE nombre='Caja mediana'"))[0].stock);
     const compras = await Promise.all(Array.from({ length: 14 }, (_, i) => comprar(i)));

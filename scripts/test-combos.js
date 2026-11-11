@@ -68,7 +68,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     const antesCaja = Number((await q("SELECT stock FROM insumos WHERE nombre='Caja mediana'"))[0].stock);
     const pagar = async (combo, lista) => {
       const ck = await call('POST', '/api/pedidos/checkout', { combo, items: por(lista), fecha: dia(), hora: '13:00', direccion: DIR }, cli);
-      const ap = await call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, undefined, cli);
+      const ap = await call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, cli);
       return ap.j.pedido_id;
     };
     const idPeq = await pagar('pequeno', [['Galleta', 1], ['Café americano', 1]]);

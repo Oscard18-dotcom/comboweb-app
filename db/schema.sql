@@ -279,3 +279,24 @@ UPDATE combos SET nombre = 'Combo Mini' WHERE clave = 'pequeno' AND nombre = 'Co
 UPDATE combos SET nombre = 'Combo Clásico' WHERE clave = 'mediano' AND nombre = 'Combo Mediano' AND NOT EXISTS (SELECT 1 FROM combos WHERE lower(nombre) = 'combo clásico');
 UPDATE pedidos SET combo_nombre = 'Combo Mini' WHERE combo = 'pequeno' AND combo_nombre = 'Combo Pequeño';
 UPDATE pedidos SET combo_nombre = 'Combo Clásico' WHERE combo = 'mediano' AND combo_nombre = 'Combo Mediano';
+
+-- ===== Pasarela simulada con tarjeta y corte de caja =====
+-- Del pago con tarjeta solo se guarda la marca y los últimos 4 dígitos (nunca el número completo ni el CVV)
+ALTER TABLE pagos ADD COLUMN IF NOT EXISTS tarjeta VARCHAR(40);
+
+-- Cortes de caja: fondo con el que se abre, lo cobrado en el periodo y con lo que se cierra
+CREATE TABLE IF NOT EXISTS cortes_caja (
+  id              SERIAL PRIMARY KEY,
+  desde           DATE NOT NULL,
+  hasta           DATE NOT NULL,
+  fondo_inicial   NUMERIC(10,2) NOT NULL CHECK (fondo_inicial >= 0),
+  ventas          NUMERIC(10,2) NOT NULL,
+  pedidos         INTEGER NOT NULL,
+  desglose        JSONB NOT NULL DEFAULT '[]',
+  saldo_final     NUMERIC(10,2) NOT NULL,
+  contado         NUMERIC(10,2),
+  diferencia      NUMERIC(10,2),
+  notas           VARCHAR(200),
+  usuario_id      INTEGER REFERENCES usuarios(id),
+  creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
+);

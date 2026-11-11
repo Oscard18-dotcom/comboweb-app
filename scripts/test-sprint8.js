@@ -75,7 +75,7 @@ async function arrancar(env, puerto) {
     const cat = (await call('GET', '/api/catalogo')).j; const pres = undefined;
     const dia = svc.addDays(svc.todayMX(), 25 + Math.floor(Math.random() * 30));
     const ck = await call('POST', '/api/pedidos/checkout', { items: [{ producto_id: V.p.id, cantidad: 1 }], presentacion_id: pres, fecha: dia, hora: '12:00', direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle de Prueba', num_ext: '12' } }, cli);
-    const pago = ck.s === 201 ? await call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, undefined, cli) : ck;
+    const pago = ck.s === 201 ? await call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, cli) : ck;
     t('preparación: el producto se vende (pedido pagado)', pago.j.estado === 'pagado', JSON.stringify(pago.j));
     r = await call('DELETE', `/api/admin/productos/${V.p.id}`, undefined, admin);
     t('eliminar un producto con ventas → se desactiva, no se borra', r.s === 200 && r.j.archivado === true, JSON.stringify(r.j));
@@ -113,7 +113,7 @@ async function arrancar(env, puerto) {
     const dia2 = svc.addDays(svc.todayMX(), 40 + Math.floor(Math.random() * 30));
     const ck2 = await call('POST', '/api/pedidos/checkout', { items: [{ producto_id: cat.productos[0].id, cantidad: 1 }], presentacion_id: pres, fecha: dia2, hora: '11:00', direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle de Prueba', num_ext: '12' } }, reg2.j.token, U);
     t('…y puede iniciar un pedido (la pasarela simulada devuelve su página de pago)', ck2.s === 201 && /pago-simulado\.html\?checkout=/.test(ck2.j.url || ''), JSON.stringify(ck2.j));
-    const ap = await call('POST', `/api/pagos/simulado/${ck2.j.checkout_id}/aprobar`, undefined, reg2.j.token, U);
+    const ap = await call('POST', `/api/pagos/simulado/${ck2.j.checkout_id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, reg2.j.token, U);
     t('…lo "paga" y el pedido queda registrado', ap.j.estado === 'pagado');
     const ped = await call('GET', '/api/pedidos', undefined, reg2.j.token, U); t('…lo ve en "Mis pedidos"', ped.s === 200 && ped.j.pedidos && ped.j.pedidos.length === 1);
     const hp = await fetch(U + '/pago-simulado.html'); t('…la página de pago simulado está publicada', hp.status === 200);

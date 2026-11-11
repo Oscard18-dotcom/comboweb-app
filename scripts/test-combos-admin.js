@@ -70,7 +70,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
 
     // Pedido real para probar el historial
     const ck = await call('POST', '/api/pedidos/checkout', { combo: c.clave, items: it([['Galleta', 2], ['Brownie', 1]]), fecha: dia(), hora: '13:00', direccion: DIR }, cli);
-    const ap = await call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, undefined, cli);
+    const ap = await call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, cli);
     const pid = ap.j.pedido_id;
     t('pedido real con el combo nuevo guarda clave y nombre', pid > 0 && (await q('SELECT combo,combo_nombre FROM pedidos WHERE id=$1', [pid]))[0].combo_nombre === nombre);
 

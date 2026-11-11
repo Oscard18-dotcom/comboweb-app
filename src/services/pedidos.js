@@ -145,7 +145,7 @@ async function crearCheckout(user, body, proveedor) {
 }
 
 /* ---------- Confirmación del pago (pasos 14–15): todo ocurre en UNA transacción ---------- */
-async function confirmarPago(checkoutId, { proveedor, referencia, monto, moneda = 'mxn' }) {
+async function confirmarPago(checkoutId, { proveedor, referencia, monto, moneda = 'mxn', tarjeta = null }) {
   const c = await db.pool.connect();
   try {
     await c.query('BEGIN');
@@ -183,7 +183,7 @@ async function confirmarPago(checkoutId, { proveedor, referencia, monto, moneda 
       await c.query('UPDATE insumos SET stock = stock - $2 WHERE id=$1', [insumoId, cant]);
       await c.query("INSERT INTO movimientos_inventario(insumo_id,tipo,cantidad,pedido_id) VALUES($1,'salida',$2,$3)", [insumoId, cant, pedido.id]);
     }
-    await c.query("INSERT INTO pagos(pedido_id,proveedor,referencia,monto,estado) VALUES($1,$2,$3,$4,'aprobado')", [pedido.id, proveedor, referencia, ck.total]);
+    await c.query("INSERT INTO pagos(pedido_id,proveedor,referencia,monto,estado,tarjeta) VALUES($1,$2,$3,$4,'aprobado',$5)", [pedido.id, proveedor, referencia, ck.total, tarjeta]);
     await c.query("UPDATE checkouts SET estado='pagado',pedido_id=$2,referencia=$3 WHERE id=$1", [ck.id, pedido.id, referencia]);
     await c.query("INSERT INTO pedido_estatus_historial(pedido_id,estatus) VALUES($1,'Pendiente')", [pedido.id]);
     await notif.encolar(c, pedido.id, 'confirmacion'); // correo de confirmación (en la misma transacción)

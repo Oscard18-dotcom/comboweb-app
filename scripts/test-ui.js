@@ -114,7 +114,20 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('Pagar crea el checkout y entrega el enlace de la pasarela', ck && /pago-simulado/.test(ck.url));
     const w2 = (await abrir(ck.url, { t: token, u: usr })).window;
     t('la pantalla de pago simulado muestra el total', await until(() => /Total a pagar/.test(w2.document.querySelector('#total').textContent) && !w2.document.querySelector('#aprobar').disabled));
-    w2.document.querySelector('#aprobar').click(); await sleep(900);
+    const d2 = w2.document, f2 = (id, v) => { const i = d2.querySelector('#' + id); i.value = v; i.dispatchEvent(new w2.Event('input', { bubbles: true })); };
+    t('la pantalla de pago pide titular, número, vencimiento y CVV, y avisa que es simulada', ['titular', 'numero', 'vence', 'cvv'].every((c) => !!d2.querySelector('#' + c)) && /SIMULADO/.test(d2.querySelector('h2').textContent) && /no se cobra nada/i.test(d2.body.textContent));
+    t('lista las tarjetas de prueba', await until(() => d2.querySelectorAll('#pruebas tbody tr').length === 4));
+    enviarForm(w2, d2.querySelector('#form'));
+    t('pagar sin llenar nada marca los 4 campos con su error', ['titular', 'numero', 'vence', 'cvv'].every((c) => d2.querySelector('#e-' + c).textContent.length > 5 && d2.querySelector('#' + c).getAttribute('aria-invalid') === 'true'));
+    f2('titular', 'Cliente Prueba'); f2('numero', '4242424242424241'); f2('vence', '1239'); f2('cvv', '123');
+    t('el número se escribe con espacios y el vencimiento con diagonal', d2.querySelector('#numero').value === '4242 4242 4242 4241' && d2.querySelector('#vence').value === '12/39');
+    enviarForm(w2, d2.querySelector('#form'));
+    t('un número inválido (no pasa Luhn) lo rechaza el servidor y no se crea el pedido', await until(() => /número de tarjeta no es válido/i.test(d2.querySelector('#e-numero').textContent)) && (await db.query("SELECT estado FROM checkouts WHERE id=$1", [ck.checkout_id])).rows[0].estado === 'creado');
+    f2('numero', '4000000000000002'); f2('cvv', '123'); enviarForm(w2, d2.querySelector('#form'));
+    t('una tarjeta que el banco rechaza muestra el motivo y deja reintentar', await until(() => /rechazó la tarjeta/i.test(d2.querySelector('#err').textContent)) && !d2.querySelector('#aprobar').disabled && (await db.query("SELECT estado FROM checkouts WHERE id=$1", [ck.checkout_id])).rows[0].estado === 'creado');
+    f2('numero', '4242424242424242'); f2('cvv', '123'); enviarForm(w2, d2.querySelector('#form'));
+    t('con una tarjeta de prueba válida el pago se aprueba y solo se guarda marca y últimos 4', await until(async () => (await db.query("SELECT estado FROM checkouts WHERE id=$1", [ck.checkout_id])).rows[0].estado === 'pagado') && (await db.query("SELECT tarjeta FROM pagos WHERE referencia=$1", ['sim_' + ck.checkout_id])).rows[0].tarjeta === 'Visa •••• 4242');
+    await sleep(300);
     const w3 = (await abrir(`${B}/?checkout=${ck.checkout_id}`, { t: token, u: usr })).window;
     t('al volver de la pasarela se muestra el comprobante', await until(() => /Comprobante EC-\d{4}/.test(w3.document.querySelector('#msg').textContent)));
     t('la dedicatoria se muestra como TEXTO (no se ejecuta)', w3.document.querySelector('#msg').textContent.includes('<img src=x') && !w3.document.querySelector('#msg img') && !w3.__pwned);
@@ -178,7 +191,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     dom = await abrir(B + '/'); w = dom.window; $ = (s) => w.document.querySelector(s);
     await until(() => w.document.querySelectorAll('#cat .item').length >= 1); await entrar(w, 'admin@encombo.test', clave);
     const pest = (w, txt) => [...w.document.querySelectorAll('#staff .seg button')].find((b) => b.textContent === txt);
-    t('administrador: ve 8 pestañas y abre en el Dashboard', await until(() => w.document.querySelectorAll('#staff .seg button').length === 8) && ['Dashboard', 'Tablero de pedidos', 'Inventario', 'Pedidos a proveedor', 'Recetas y costeo', 'Catálogo y precios', 'Reportes', 'Usuarios'].every((n) => pest(w, n)) && pest(w, 'Dashboard').classList.contains('on'));
+    t('administrador: ve 9 pestañas y abre en el Dashboard', await until(() => w.document.querySelectorAll('#staff .seg button').length === 9) && ['Dashboard', 'Tablero de pedidos', 'Inventario', 'Pedidos a proveedor', 'Recetas y costeo', 'Catálogo y precios', 'Reportes', 'Corte de caja', 'Usuarios'].every((n) => pest(w, n)) && pest(w, 'Dashboard').classList.contains('on'));
     t('dashboard: tarjetas del día y la alerta de reorden (Té chai)', await until(() => /Ventas de hoy/.test($('#staff').textContent) && /Té chai/.test($('#staff .alertas, #staff .grid2') ? $('#staff .grid2').textContent : '')));
     const tv = await until(() => [...w.document.querySelectorAll('#staff table.contable')].find((x) => /Fecha/.test(x.textContent) && x.querySelectorAll('tbody tr').length === 8));
     const optsP = () => [...w.document.querySelectorAll('#staff [data-periodo] option')].map((o) => o.textContent);
@@ -303,6 +316,35 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     [...filaT(nomC2).querySelectorAll('button')].find((x) => x.textContent === 'Eliminar').click();
     [...(await until(() => filaT(nomC2) && [...filaT(nomC2).querySelectorAll('button')].some((x) => x.textContent === 'Sí, eliminar') && filaT(nomC2)) || filaT(nomC2)).querySelectorAll('button')].find((x) => x.textContent === 'Sí, eliminar').click();
     t('combos: confirmar elimina el combo de la lista y de la base', await until(async () => !(await combosBD(nomC2))) && await until(() => !filaT(nomC2)) && limpio(w));
+
+    /* ---------- ADMIN: corte de caja ---------- */
+    w.__prints = 0; w.print = () => { w.__prints++; };
+    pest(w, 'Corte de caja').click();
+    const hojaTxt = () => (w.document.querySelector('#staff .hoja') || { textContent: '' }).textContent;
+    t('corte de caja: muestra la hoja con fondo inicial, ventas y saldo final esperado (vista previa)', await until(() => /Fondo inicial/.test(hojaTxt()) && /Ventas cobradas/.test(hojaTxt()) && /Saldo final esperado/.test(hojaTxt()) && /Vista previa/.test(hojaTxt())));
+    const cambiarC = (lbl, v) => { const i = w.document.querySelector(`#staff [aria-label="${lbl}"]`); i.value = v; i.dispatchEvent(new w.Event('input', { bubbles: true })); };
+    cambiarC('Con cuánto inicias (fondo inicial)', '1000');
+    const hoyC = svc.todayMX();
+    const ventasHoy = Number((await db.query("SELECT coalesce(sum(monto),0) m FROM pagos WHERE estado='aprobado' AND (creado_en AT TIME ZONE 'America/Mexico_City')::date=$1", [hoyC])).rows[0].m);
+    const mxn = (n) => n.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+    t('corte de caja: la hoja muestra el fondo y el saldo final = fondo + ventas', await until(() => hojaTxt().includes(mxn(1000)) && hojaTxt().includes(mxn(1000 + ventasHoy))));
+    cambiarC('Monto contado al cierre', String(1000 + ventasHoy + 5));
+    t('corte de caja: al escribir el monto contado aparece la diferencia', await until(() => /Diferencia/.test(hojaTxt()) && hojaTxt().includes(mxn(5))));
+    cambiarC('Notas del corte', `Corte UI ${R}`);
+    enviarForm(w, w.document.querySelector('#staff form[aria-label="Datos del corte"]'));
+    t('corte de caja: guardar genera folio, lo muestra en la hoja y abre la impresión', await until(() => /Folio CC-\d{4,}/.test(hojaTxt()) && w.__prints >= 1) && /Corte UI/.test(hojaTxt()) && /Elaboró/.test(hojaTxt()) && /Revisó/.test(hojaTxt()));
+    const corteUI = (await db.query("SELECT id,fondo_inicial,contado FROM cortes_caja WHERE notas=$1", [`Corte UI ${R}`])).rows[0];
+    t('corte de caja: el corte quedó guardado en la base con el fondo y el monto contado', corteUI && Number(corteUI.fondo_inicial) === 1000 && Number(corteUI.contado) === 1000 + ventasHoy + 5);
+    t('corte de caja: aparece en "Cortes guardados"', await until(() => [...w.document.querySelectorAll('#staff table')].some((tb) => tb.textContent.includes('CC-') && tb.textContent.includes('Ver / imprimir'))));
+    const prints0 = w.__prints;
+    [...w.document.querySelectorAll('#staff button')].find((b) => /^Ver e imprimir CC-/.test(b.getAttribute('aria-label') || '')).click();
+    t('corte de caja: "Ver / imprimir" abre la hoja del corte y manda a imprimir', await until(() => w.__prints > prints0));
+    t('corte de caja: botón de imprimir la vista actual', !!btnTxt('Imprimir vista actual'));
+    t('corte de caja: lo que no es la hoja se oculta al imprimir', !!w.document.querySelector('#staff form.noprint') && !!w.document.querySelector('#staff .seg.noprint') && limpio(w));
+    cambiarC('Hasta', '2020-01-01');
+    w.document.querySelector('#staff [aria-label="Hasta"]').dispatchEvent(new w.Event('change', { bubbles: true }));
+    t('corte de caja: un periodo con fecha final anterior a la inicial muestra el error', await until(() => /fecha inicial debe ser anterior/i.test($('#staff .errbox').textContent)));
+    await db.query('DELETE FROM cortes_caja WHERE id=$1', [corteUI.id]);
 
     /* ---------- ADMIN: pedidos a proveedor (Sprint 7) ---------- */
     pest(w, 'Dashboard').click();
