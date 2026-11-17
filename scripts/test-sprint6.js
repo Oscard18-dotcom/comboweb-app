@@ -42,7 +42,7 @@ function rutas() {
 const PUBLICAS = new Set(['GET /api/catalogo', 'GET /api/catalogo/codigo-postal/:cp', 'GET /api/pedidos/disponibilidad', 'POST /api/pedidos/cotizar', 'POST /api/auth/login', 'POST /api/auth/register', 'POST /api/auth/olvide', 'POST /api/auth/restablecer', 'GET /api/salud', 'POST /api/pagos/webhook/stripe']);
 function clasifica(m, p) {
   if (PUBLICAS.has(`${m} ${p}`)) return { tipo: 'publica' };
-  if (['/api/admin', '/api/caja', '/api/recetas', '/api/reportes', '/api/notificaciones', '/api/proveedores', '/api/pedidos-proveedor'].some((x) => p.startsWith(x))) return { tipo: 'roles', roles: ['admin'] };
+  if (['/api/admin', '/api/recetas', '/api/reportes', '/api/notificaciones', '/api/proveedores', '/api/pedidos-proveedor'].some((x) => p.startsWith(x))) return { tipo: 'roles', roles: ['admin'] };
   if (p.startsWith('/api/inventario')) return { tipo: 'roles', roles: ['almacen', 'admin'] };
   if (p.startsWith('/api/cocina')) return { tipo: 'roles', roles: ['cocina', 'admin'] };
   if (p === '/api/pedidos/checkout' || p.startsWith('/api/pedidos/checkout/') || (m === 'GET' && p === '/api/pedidos') || p.startsWith('/api/pagos/simulado') || p.startsWith('/api/avisos')) return { tipo: 'roles', roles: ['cliente'] };

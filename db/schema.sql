@@ -280,34 +280,6 @@ UPDATE combos SET nombre = 'Combo Clásico' WHERE clave = 'mediano' AND nombre =
 UPDATE pedidos SET combo_nombre = 'Combo Mini' WHERE combo = 'pequeno' AND combo_nombre = 'Combo Pequeño';
 UPDATE pedidos SET combo_nombre = 'Combo Clásico' WHERE combo = 'mediano' AND combo_nombre = 'Combo Mediano';
 
--- ===== Pasarela simulada con tarjeta y corte de caja =====
+-- ===== Pasarela simulada con tarjeta =====
 -- Del pago con tarjeta solo se guarda la marca y los últimos 4 dígitos (nunca el número completo ni el CVV)
 ALTER TABLE pagos ADD COLUMN IF NOT EXISTS tarjeta VARCHAR(40);
-
--- Cortes de caja: fondo con el que se abre, lo cobrado en el periodo y con lo que se cierra
-CREATE TABLE IF NOT EXISTS cortes_caja (
-  id              SERIAL PRIMARY KEY,
-  desde           DATE NOT NULL,
-  hasta           DATE NOT NULL,
-  fondo_inicial   NUMERIC(10,2) NOT NULL CHECK (fondo_inicial >= 0),
-  ventas          NUMERIC(10,2) NOT NULL,
-  pedidos         INTEGER NOT NULL,
-  desglose        JSONB NOT NULL DEFAULT '[]',
-  saldo_final     NUMERIC(10,2) NOT NULL,
-  contado         NUMERIC(10,2),
-  diferencia      NUMERIC(10,2),
-  notas           VARCHAR(200),
-  usuario_id      INTEGER REFERENCES usuarios(id),
-  creado_en       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Corte de caja en dos pasos: se ABRE con el fondo inicial (queda guardado) y después se CIERRA con la cantidad final
-ALTER TABLE cortes_caja ALTER COLUMN ventas DROP NOT NULL;
-ALTER TABLE cortes_caja ALTER COLUMN pedidos DROP NOT NULL;
-ALTER TABLE cortes_caja ALTER COLUMN saldo_final DROP NOT NULL;
-ALTER TABLE cortes_caja ADD COLUMN IF NOT EXISTS estado VARCHAR(10) NOT NULL DEFAULT 'cerrado' CHECK (estado IN ('abierto','cerrado'));
-ALTER TABLE cortes_caja ADD COLUMN IF NOT EXISTS abierto_por INTEGER REFERENCES usuarios(id);
-ALTER TABLE cortes_caja ADD COLUMN IF NOT EXISTS cerrado_en TIMESTAMPTZ;
-UPDATE cortes_caja SET cerrado_en = creado_en WHERE estado = 'cerrado' AND cerrado_en IS NULL;
--- A lo más una caja abierta por día
-CREATE UNIQUE INDEX IF NOT EXISTS cortes_caja_abierto_dia_idx ON cortes_caja(desde) WHERE estado = 'abierto';

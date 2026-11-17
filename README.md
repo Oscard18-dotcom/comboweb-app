@@ -293,25 +293,6 @@ La pantalla de pago (`/pago-simulado.html`) pide **nombre del titular, número d
 
 Usa cualquier nombre, un vencimiento futuro (p. ej. 12/30) y un CVV de 3 dígitos. **El número completo y el CVV nunca se guardan**: del pago solo queda la marca y los últimos 4 dígitos (p. ej. “Visa •••• 4242”). En producción real esta pantalla se sustituye por Stripe (`PAYMENT_PROVIDER=stripe`).
 
-## Corte de caja
-
-En **Corte de caja** (solo administrador) se trabaja en **dos pasos**:
-
-1. **Abrir:** eliges el **día** (por defecto hoy) y anotas **con cuánto abres** (fondo inicial). Se guarda como una caja *abierta* con su folio `CC-####`.
-2. **Cerrar:** más tarde (al terminar el día) vuelves a entrar, el día aparece como caja abierta y escribes la **cantidad final** con la que cierras. El sistema suma los pagos aprobados del día (desglosados por tarjeta), calcula el **saldo final esperado** (fondo inicial + ventas) y la **diferencia** (cantidad final − esperado).
-3. **Imprimir:** el botón *Imprimir corte de caja* solo aparece con la caja **cerrada**. La hoja imprime solo el corte, en formato contable y con firmas “Elaboró” y “Revisó”.
-
-Reglas: una sola caja por día (no se abre dos veces ni se reabre una cerrada); no se pueden usar días futuros; si queda una caja abierta de otro día, la pantalla avisa y lleva a ella; el historial permite reimprimir cualquier corte cerrado con sus cifras originales (no cambian aunque entren pagos nuevos). Las ventas siempre las calcula el servidor.
-
-| Ruta | Quién | Para qué |
-|---|---|---|
-| GET `/api/caja/dia?fecha` | Administrador | Corte del día (si existe) y ventas del día |
-| POST `/api/caja/abrir` | Administrador | Paso 1: abre con el fondo inicial |
-| POST `/api/caja/:id/cerrar` | Administrador | Paso 2: cierra con la cantidad final |
-| GET `/api/caja` · `/api/caja/:id` | Administrador | Historial y detalle |
-
-Pruebas: `npm run test:caja`.
-
 ## Pedidos para el mismo día
 
 Ya se puede pedir para hoy. Para evitar horarios imposibles, en los pedidos de hoy solo se ofrecen las horas que falten **al menos 2 horas** (tiempo de preparación; los horarios anteriores aparecen deshabilitados). Se ajusta en `.env` / Render con `MIN_HOURS_AHEAD` (horas) y `MIN_DAYS_AHEAD` (0 = permitir hoy, 1 = exigir mínimo un día). Pruebas: `npm run test:mismo-dia`.
