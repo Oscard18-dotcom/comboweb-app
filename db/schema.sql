@@ -359,3 +359,7 @@ CREATE TABLE IF NOT EXISTS tarjetas_guardadas (
 );
 -- (5) Eliminar la cuenta (derecho de cancelación): la fila se anonimiza para conservar el historial de ventas
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS eliminado_en TIMESTAMPTZ;
+
+-- Precios por kilo / litro: se guardan por gramo / ml con 6 decimales para no perder centavos (p. ej. $85.55/kg = 0.08555/g)
+ALTER TABLE proveedor_insumos ALTER COLUMN precio_unitario TYPE NUMERIC(14,6);
+ALTER TABLE pedido_proveedor_items ALTER COLUMN precio_unitario TYPE NUMERIC(14,6);

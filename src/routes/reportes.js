@@ -132,7 +132,7 @@ router.get('/ventas-periodo', wrap(async (req, res) => {
   const tot = rows.reduce((a, x) => ({ pedidos: a.pedidos + x.pedidos, ventas: a.ventas + Number(x.ventas), costo: a.costo + Number(x.costo) }), { pedidos: 0, ventas: 0, costo: 0 });
   const combos = (await ventasPorCombo(desde, hasta)).map((x) => ({ nombre: x.nombre, pedidos: x.pedidos, ventas: x.ventas }));
   const gas = await gastosCompras(desde, hasta);
-  res.json({ periodo, desde, hasta, unidad, pedidos: tot.pedidos, ventas: r2(tot.ventas), costo: r2(tot.costo), utilidad: r2(tot.ventas - tot.costo), gastos: gas.total, compras: gas.pedidos, gastos_detalle: gas.detalle,
+  res.json({ periodo, desde, hasta, unidad, pedidos: tot.pedidos, ventas: r2(tot.ventas), costo: r2(tot.costo), utilidad: r2(tot.ventas - tot.costo), gastos: gas.total, compras: gas.pedidos, gastos_detalle: gas.detalle, utilidad_neta: r2(tot.ventas - gas.total), margen_neto_pct: tot.ventas > 0 ? Math.round((tot.ventas - gas.total) / tot.ventas * 1000) / 10 : 0,
     margen_pct: tot.ventas > 0 ? Math.round((tot.ventas - tot.costo) / tot.ventas * 1000) / 10 : 0, ticket_promedio: tot.pedidos ? r2(tot.ventas / tot.pedidos) : 0,
     serie: rows.map((x) => ({ periodo: x.periodo, pedidos: x.pedidos, ventas: r2(x.ventas) })),
     combos });

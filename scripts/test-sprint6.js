@@ -137,7 +137,7 @@ const concreta = (p) => p.replace('/checkout/:id', '/checkout/00000000-0000-4000
       if (!(sin.s === 401 || (url.includes('/pagos/simulado') && sin.s === 404))) fallos.push(`${m} ${p} sin sesión → ${sin.s}`);
       for (const [rol, tok] of Object.entries(roles)) {
         const x = await call(m, url, cuerpo, tok); revisadas++;
-        const permitido = c.tipo === 'sesion' || c.roles.includes(rol);
+        const permitido = c.tipo === 'sesion' ? !(p === '/api/auth/perfil' && m === 'PUT' && ['cocina', 'almacen'].includes(rol)) : c.roles.includes(rol);
         if (permitido && (x.s === 401 || x.s === 403)) fallos.push(`${m} ${p} con ${rol} debería pasar → ${x.s}`);
         if (!permitido && x.s !== 403) fallos.push(`${m} ${p} con ${rol} debería ser 403 → ${x.s}`);
       }

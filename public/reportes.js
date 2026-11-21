@@ -71,7 +71,8 @@
         const max = Math.max(1, ...v.serie.map((x) => x.ventas));
         contenido.replaceChildren(
           e('p', { class: 'mu' }, `Del ${fd(v.desde)} al ${fd(v.hasta)} · cifras en pesos mexicanos (MXN)`),
-          e('div', { class: 'kp', 'data-ventas-periodo': '1' }, kp('Ventas', mx(v.ventas)), kp('Pedidos', String(v.pedidos)), kp('Gastos de compras', mx(v.gastos), v.gastos ? '#B3261E' : '')),
+          e('div', { class: 'kp', 'data-ventas-periodo': '1' }, kp('Ingresos totales', mx(v.ventas)), kp('Pedidos', String(v.pedidos)), kp('Gastos totales', mx(v.gastos), v.gastos ? '#B3261E' : ''), kp('Utilidad bruta', mx(v.utilidad), v.utilidad < 0 ? '#B3261E' : '#3E5B3A'), kp('Utilidad neta', mx(v.utilidad_neta), v.utilidad_neta < 0 ? '#B3261E' : '#3E5B3A'), kp('Margen', v.margen_neto_pct + ' %', v.margen_neto_pct < 0 ? '#B3261E' : '')),
+          e('p', { class: 'mu' }, 'Ingresos totales = ventas. Gastos totales = compras a proveedores. Utilidad bruta = ventas − costo de los insumos usados. Utilidad neta = ingresos − gastos totales. Margen = utilidad neta ÷ ingresos.'),
           e('div', { class: 'graficas' }, e('div', {}, e('h4', {}, 'Ventas por periodo (barras)'), graficaBarras(v.serie, v.unidad)), e('div', {}, e('h4', {}, 'Ventas por combo (pastel)'), graficaPastel(v.combos))),
           v.gastos_detalle && v.gastos_detalle.length ? e('p', { class: 'mu', 'data-gastos': '1' }, 'Compras a proveedores: ' + v.gastos_detalle.map((g) => `${g.folio} ${g.proveedor} ${mx(g.total)}`).join(' · ')) : null,
           v.serie.length ? e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, e('th', {}, v.unidad === 'hour' ? 'Hora' : 'Periodo'), e('th', { class: 'n' }, 'Pedidos'), e('th', { class: 'n' }, 'Ventas'), e('th', {}, ''))),

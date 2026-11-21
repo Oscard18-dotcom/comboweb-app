@@ -237,6 +237,35 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
       t('eliminar: cuenta de almacén con historial → 200, el historial se conserva sin su nombre', (await call('DELETE', `/api/admin/usuarios/${idAl}`, undefined, admin)).s === 200 && (await q('SELECT 1 FROM usuarios WHERE id=$1', [idAl])).length === 0);
       await db.query('DELETE FROM usuarios WHERE id = ANY($1)', [[idAd, idCl]]);
     }
+
+    // ---------- 8) Mi cuenta del personal: cocina/almacén solo contraseña; admin además su correo ----------
+    {
+      t('cocina no puede cambiar su correo/nombre (403)', (await call('PUT', '/api/auth/perfil', { correo: `x${R}@prueba.test`, password: process.env.SEED_PASSWORD }, cocina)).s === 403);
+      t('almacén no puede cambiar su correo/nombre (403)', (await call('PUT', '/api/auth/perfil', { correo: `x${R}@prueba.test`, password: process.env.SEED_PASSWORD }, almacen)).s === 403);
+      t('cocina y almacén conservan su correo', (await q("SELECT count(*)::int n FROM usuarios WHERE correo IN ('cocina@encombo.test','almacen@encombo.test')"))[0].n === 2);
+      const hash = (await q("SELECT password_hash h FROM usuarios WHERE correo='admin@encombo.test'"))[0].h;
+      const idA = (await q("INSERT INTO usuarios(nombre,correo,password_hash,rol) VALUES('Admin Prueba',$1,$2,'admin') RETURNING id", [`adm-${R}@prueba.test`, hash]))[0].id;
+      const tokA = (await call('POST', '/api/auth/login', { correo: `adm-${R}@prueba.test`, password: process.env.SEED_PASSWORD })).j.token;
+      let r2 = await call('PUT', '/api/auth/perfil', { correo: `adm2-${R}@prueba.test` }, tokA);
+      t('admin: cambiar el correo exige la contraseña actual', r2.s === 400);
+      r2 = await call('PUT', '/api/auth/perfil', { nombre: 'Otro Nombre', correo: `adm2-${R}@prueba.test`, password: process.env.SEED_PASSWORD }, tokA);
+      const fila = (await q('SELECT nombre,correo FROM usuarios WHERE id=$1', [idA]))[0];
+      t('admin: cambia su correo con la contraseña y el nombre no se modifica', r2.s === 200 && fila.correo === `adm2-${R}@prueba.test` && fila.nombre === 'Admin Prueba');
+      t('admin: puede entrar con el correo nuevo', (await call('POST', '/api/auth/login', { correo: `adm2-${R}@prueba.test`, password: process.env.SEED_PASSWORD })).s === 200);
+      await db.query('DELETE FROM usuarios WHERE id=$1', [idA]);
+    }
+
+    // ---------- 9) Resultados del periodo y precios por kilo/litro ----------
+    {
+      const v = (await call('GET', '/api/reportes/ventas-periodo?periodo=total', undefined, admin)).j;
+      t('ventas-periodo: utilidad neta = ingresos − gastos y margen neto = neta ÷ ingresos', Math.abs(v.utilidad_neta - (v.ventas - v.gastos)) < 0.011 && (v.ventas > 0 ? Math.abs(v.margen_neto_pct - Math.round(v.utilidad_neta / v.ventas * 1000) / 10) < 0.11 : v.margen_neto_pct === 0));
+      const harina = (await q("SELECT id FROM insumos WHERE nombre='Harina'"))[0].id;
+      const pr = await call('POST', '/api/proveedores', { nombre: `Kilo ${R}`, correo: `kilo${R}@prueba.test`, insumos: [{ id: harina, precio_unitario: 0.08555 }] }, admin);
+      if (pr.j.proveedor) provs.push(pr.j.proveedor.id);
+      t('proveedor: acepta precio por gramo con 5 decimales ($85.55/kg) sin perder centavos', pr.s === 201 && Number(pr.j.proveedor.insumos[0].precio_unitario) === 0.08555);
+      const ct = await call('POST', '/api/pedidos-proveedor/cotizar', { proveedor_id: pr.j.proveedor.id, items: [{ insumo_id: harina, cantidad: 2500 }] }, admin);
+      t('cotización: 2,500 g × $85.55/kg = $213.88 usando el precio del proveedor', ct.s === 200 && ct.j.total === 213.88, JSON.stringify(ct.j).slice(0, 150));
+    }
   } catch (e) { fail++; console.log('FAIL excepción', e.stack || e); }
   finally {
     try {

@@ -35,8 +35,8 @@ function validar(b, parcial) {
       let pu = null;
       if (obj) {
         const n = typeof x.precio_unitario === 'string' && x.precio_unitario.trim() !== '' ? Number(x.precio_unitario) : x.precio_unitario;
-        if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0 || n > 1e6 || Math.abs(n * 1e4 - Math.round(n * 1e4)) > 1e-6) return { error: 'Escribe el costo unitario de cada insumo del proveedor (mayor a 0, máximo 4 decimales).' };
-        pu = Math.round(n * 1e4) / 1e4;
+        if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0 || n > 1e6 || Math.abs(n * 1e6 - Math.round(n * 1e6)) > 1e-6) return { error: 'Escribe el costo unitario de cada insumo del proveedor (mayor a 0, máximo 6 decimales).' };
+        pu = Math.round(n * 1e6) / 1e6;
       }
       if (lista.some((y) => y.id === id)) continue;
       lista.push({ id, pu });

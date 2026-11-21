@@ -80,8 +80,10 @@ router.get('/perfil', auth, wrap(async (req, res) => {
 // Cambiar nombre y/o correo. Cambiar el correo exige la contraseña actual y cierra las demás sesiones.
 router.put('/perfil', limiter, auth, wrap(async (req, res) => {
   const b = req.body || {};
+  // Cocina y almacén solo cambian su contraseña; el administrador solo su correo; el cliente su nombre y correo
+  if (!['cliente', 'admin'].includes(req.user.rol)) return res.status(403).json({ error: 'Tu cuenta solo permite cambiar la contraseña. Si necesitas cambiar tu correo, pídeselo al administrador.' });
   const { rows: [u] } = await db.query('SELECT id,nombre,correo,rol,password_hash,token_version,privacidad_version FROM usuarios WHERE id=$1', [req.user.id]);
-  const nombre = b.nombre === undefined ? u.nombre : b.nombre, correo = b.correo === undefined ? u.correo : String(b.correo).trim().toLowerCase();
+  const nombre = req.user.rol !== 'cliente' || b.nombre === undefined ? u.nombre : b.nombre, correo = b.correo === undefined ? u.correo : String(b.correo).trim().toLowerCase();
   if (!isText(nombre, 2, 80)) return res.status(400).json({ error: 'El nombre debe tener entre 2 y 80 caracteres.' });
   if (!isEmail(correo)) return res.status(400).json({ error: 'Escribe un correo válido.' });
   const cambiaCorreo = correo !== u.correo.toLowerCase();

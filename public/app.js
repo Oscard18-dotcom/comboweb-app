@@ -20,7 +20,7 @@ const chip = (estatus) => el('span', { class: 'chip', style: 'background:' + (ES
 const REFRESCO = window.__REFRESCO_MS || 15000; // cada cuánto se actualiza "Mis pedidos"
 const ln = (a, b, cls = '') => el('div', { class: 'ln ' + cls }, el('span', {}, a), el('span', {}, b));
 
-let token = null, user = null, cat = null, tab = 'armar';
+let token = null, user = null, cat = null, tab = 'armar', vistaCuenta = false;
 let retorno = { checkout: null, cancelado: null }, resetToken = null;
 try {
   token = sessionStorage.getItem('t'); user = JSON.parse(sessionStorage.getItem('u') || 'null');
@@ -42,7 +42,7 @@ async function api(path, { method = 'GET', body } = {}) {
   return j;
 }
 function setSession(t, u) {
-  token = t; user = u;
+  token = t; user = u; if (!u) vistaCuenta = false;
   try {
     if (t) { sessionStorage.setItem('t', t); sessionStorage.setItem('u', JSON.stringify(u)); }
     else { sessionStorage.removeItem('t'); sessionStorage.removeItem('u'); }
@@ -348,7 +348,12 @@ function paint() {
   pedirPrivacidad();
   const cli = !!user && user.rol === 'cliente', staff = !!user && !cli;
   $('#who').textContent = user ? user.nombre + ' · ' + ROL[user.rol] : '';
-  $('#out').hidden = !user; $('#btn-cuenta').hidden = !user; if (!user) $('#cuenta').hidden = true; $('#auth').hidden = !!user; $('#nav').hidden = !cli; $('#staff').hidden = !staff;
+  $('#out').hidden = !user; $('#btn-cuenta').hidden = !user; $('#cuenta').hidden = !(user && vistaCuenta); $('#auth').hidden = !!user; $('#nav').hidden = !cli || vistaCuenta; $('#staff').hidden = !staff || vistaCuenta;
+  if (user && vistaCuenta) {
+    // «Mi cuenta» es una pantalla aparte: se oculta todo lo demás hasta que la persona regrese
+    for (const id of ['#armar', '#mis', '#avisos', '#catalogo', '#msg']) $(id).hidden = true;
+    return;
+  }
   $('#armar').hidden = !(cli && tab === 'armar'); $('#mis').hidden = !(cli && tab === 'mis'); $('#avisos').hidden = !(cli && tab === 'avis'); $('#catalogo').hidden = cli || staff;
   document.querySelectorAll('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   if (!user) $('#msg').hidden = true;
@@ -398,12 +403,16 @@ if (resetToken) vistaAuth('reset');
 /* Mi cuenta = derechos ARCO del Aviso de privacidad:
    Acceder (ver tus datos) · Rectificar (cambiar nombre, correo y contraseña) · Cancelar y Oponerte (eliminar la cuenta) · y tus tarjetas guardadas */
 function abrirCuenta() {
-  const c = $('#cuenta');
-  if (!c.hidden) { c.hidden = true; return; }
-  c.hidden = false; renderCuenta();
+  if (!user) return;
+  if (vistaCuenta) { volverDeCuenta(); return; }
+  vistaCuenta = true; paint(); renderCuenta(); window.scrollTo(0, 0);
+}
+function volverDeCuenta() {
+  vistaCuenta = false; if (user && user.rol === 'cliente') tab = 'armar';
+  $('#cuenta').replaceChildren(); paint(); window.scrollTo(0, 0);
 }
 async function renderCuenta() {
-  const c = $('#cuenta'), esCliente = user.rol === 'cliente';
+  const c = $('#cuenta'), esCliente = user.rol === 'cliente', esAdmin = user.rol === 'admin';
   const guardarSesion = (t, u) => { if (t) token = t; user = u; try { sessionStorage.setItem('t', token); sessionStorage.setItem('u', JSON.stringify(u)); } catch (e) { /* ok */ } paint(); };
   const msg = () => ({ err: el('p', { class: 'err', role: 'alert' }), ok: el('p', { class: 'okmsg', role: 'status' }) });
   const pw = (rotulo, nombre, auto) => el('label', {}, rotulo, el('input', { type: 'password', name: nombre, autocomplete: auto, required: true, maxlength: 72 }));
@@ -416,14 +425,14 @@ async function renderCuenta() {
     ev.preventDefault(); m1.err.textContent = ''; m1.ok.textContent = '';
     const v = new FormData(fd), cambia = v.get('correo').trim().toLowerCase() !== perfil.correo.toLowerCase();
     try {
-      const j = await api('/auth/perfil', { method: 'PUT', body: { nombre: v.get('nombre'), correo: v.get('correo'), ...(cambia ? { password: v.get('password') } : {}) } });
+      const j = await api('/auth/perfil', { method: 'PUT', body: { ...(esCliente ? { nombre: v.get('nombre') } : {}), correo: v.get('correo'), ...(cambia ? { password: v.get('password') } : {}) } });
       guardarSesion(j.token, j.usuario); perfil.nombre = j.usuario.nombre; perfil.correo = j.usuario.correo; fd.elements.password.value = ''; m1.ok.textContent = 'Datos actualizados.';
     } catch (e) { m1.err.textContent = e.message; }
   } },
-    el('label', {}, 'Nombre', el('input', { name: 'nombre', value: perfil.nombre, required: true, minlength: 2, maxlength: 80, autocomplete: 'name' })),
+    esCliente ? el('label', {}, 'Nombre', el('input', { name: 'nombre', value: perfil.nombre, required: true, minlength: 2, maxlength: 80, autocomplete: 'name' })) : null,
     el('label', {}, 'Correo', el('input', { name: 'correo', type: 'email', value: perfil.correo, required: true, maxlength: 120, autocomplete: 'email' })),
-    el('label', {}, 'Contraseña actual (solo si cambias el correo)', el('input', { type: 'password', name: 'password', autocomplete: 'current-password', maxlength: 72 })),
-    m1.err, m1.ok, el('button', { class: 'btn', type: 'submit' }, 'Guardar mis datos'));
+    el('label', {}, esCliente ? 'Contraseña actual (solo si cambias el correo)' : 'Contraseña actual (necesaria para cambiar tu correo)', el('input', { type: 'password', name: 'password', autocomplete: 'current-password', maxlength: 72 })),
+    m1.err, m1.ok, el('button', { class: 'btn', type: 'submit' }, esCliente ? 'Guardar mis datos' : 'Guardar correo'));
 
   // 2) Cambiar contraseña (cierra las demás sesiones y conserva esta)
   const m2 = msg();
@@ -437,9 +446,16 @@ async function renderCuenta() {
   } }, pw('Contraseña actual', 'actual', 'current-password'), pw('Nueva contraseña (mínimo 8 caracteres)', 'nueva', 'new-password'), pw('Repite la nueva contraseña', 'repetir', 'new-password'),
     m2.err, m2.ok, el('button', { class: 'btn', type: 'submit' }, 'Cambiar contraseña'));
 
-  const partes = [el('h2', {}, 'Mi cuenta'),
-    el('p', { class: 'mu' }, `Aquí puedes consultar y modificar tus datos, tal como lo describe el punto 6 del `, el('a', { href: 'privacidad.html', target: '_blank', rel: 'noopener' }, 'Aviso de privacidad'), '.'),
-    el('h3', {}, 'Mis datos'), fd, el('h3', {}, 'Contraseña'), f];
+  const volver = (txt) => el('button', { class: 'btn s', type: 'button', 'data-volver-cuenta': '1', onclick: volverDeCuenta }, txt);
+  const txtVolver = esCliente ? '← Volver a hacer un nuevo pedido' : '← Volver al panel';
+  const partes = [el('div', { class: 'row' }, volver(txtVolver)), el('h2', {}, 'Mi cuenta')];
+  if (esCliente) partes.push(el('p', { class: 'mu' }, `Aquí puedes consultar y modificar tus datos, tal como lo describe el punto 6 del `, el('a', { href: 'privacidad.html', target: '_blank', rel: 'noopener' }, 'Aviso de privacidad'), '.'), el('h3', {}, 'Mis datos'), fd);
+  else {
+    partes.push(el('p', { class: 'mu' }, `${perfil.nombre} · ${ROL[user.rol]}`));
+    if (esAdmin) partes.push(el('h3', {}, 'Correo de la cuenta'), fd);
+    else partes.push(el('p', { class: 'mu' }, `Correo de acceso: ${perfil.correo}. Si necesitas cambiarlo, pídeselo al administrador.`));
+  }
+  partes.push(el('h3', {}, 'Contraseña'), f);
 
   if (esCliente) {
     // 3) Mis tarjetas
@@ -486,7 +502,7 @@ async function renderCuenta() {
       el('p', { class: 'mu' }, perfil.privacidad_aceptada_en ? `Aceptaste el Aviso de privacidad (versión ${perfil.privacidad_version}) el ${new Date(perfil.privacidad_aceptada_en).toLocaleDateString('es-MX')}.` : 'Aún no has aceptado el Aviso de privacidad.'),
       el('button', { class: 'btn s peligro-s', type: 'button', 'data-eliminar-cuenta': '1', onclick: pedirBaja }, 'Eliminar mi cuenta'), zona);
   }
-  partes.push(el('div', { class: 'row' }, el('button', { class: 'btn s', type: 'button', onclick: () => { c.hidden = true; } }, 'Cerrar')));
+  partes.push(el('div', { class: 'row' }, volver(txtVolver)));
   c.replaceChildren(...partes);
 }
 $('#btn-cuenta').onclick = abrirCuenta;

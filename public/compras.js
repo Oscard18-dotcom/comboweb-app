@@ -1,5 +1,10 @@
 // Pedidos a proveedor y proveedores (Sprint 7). Solo administración.
 (() => {
+  // Los precios de los proveedores se capturan y se muestran por kilo (g), por litro (ml) o por pieza; en la base se guardan por gramo / ml / pieza
+  const FAC = (u) => (u === 'g' || u === 'ml' ? 1000 : 1);
+  const UP = (u) => (u === 'g' ? 'kg' : u === 'ml' ? 'L' : u);
+  const aCompra = (precioBase, u) => Math.round(Number(precioBase) * FAC(u) * 1e4) / 1e4;   // por gramo → por kg
+  const aBase = (precioCompra, u) => Math.round(Number(precioCompra) / FAC(u) * 1e6) / 1e6;   // por kg → por gramo
   const fd = (f) => (f ? f.split('-').reverse().join('/') : '—');
 
   Personal.registrar('compras', 'Pedidos a proveedor', ['almacen', 'admin'], 3.5, (cont, H) => {
@@ -56,7 +61,7 @@
             p.fecha_requerida ? e('dt', {}, 'Lo necesitas para') : null, p.fecha_requerida ? e('dd', {}, fd(p.fecha_requerida)) : null, e('dt', {}, 'Nota'), e('dd', {}, p.nota || '—'),
             e('dt', {}, 'Estado'), e('dd', {}, chipEstado(p)), e('dt', {}, 'Stock'), e('dd', {}, p.estado === 'cancelado' ? 'No se sumó (pedido cancelado)' : p.stock_aplicado ? 'Ya se sumó al inventario' : 'Se sumará al marcar el pedido como recibido'),
             p.recibido_en ? e('dt', {}, 'Recibido') : null, p.recibido_en ? e('dd', {}, fecha(p.recibido_en)) : null, e('dt', {}, 'Correo al proveedor'), e('dd', {}, chipCorreo(p.correo_estado))),
-          e('table', {}, e('thead', {}, e('tr', {}, e('th', {}, 'Insumo'), e('th', {}, 'Cantidad pedida'), e('th', { class: 'n' }, 'Precio unit.'), e('th', { class: 'n' }, 'Importe'))), e('tbody', {}, p.items.map((i) => e('tr', {}, e('td', {}, i.nombre), e('td', {}, `${num(i.cantidad)} ${i.unidad}`), e('td', { class: 'n' }, mx(i.precio_unitario)), e('td', { class: 'n' }, mx(i.subtotal)))),
+          e('table', {}, e('thead', {}, e('tr', {}, e('th', {}, 'Insumo'), e('th', {}, 'Cantidad pedida'), e('th', { class: 'n' }, 'Precio unit.'), e('th', { class: 'n' }, 'Importe'))), e('tbody', {}, p.items.map((i) => e('tr', {}, e('td', {}, i.nombre), e('td', {}, `${num(i.cantidad)} ${i.unidad}`), e('td', { class: 'n' }, `${mx(aCompra(i.precio_unitario, i.unidad))} / ${UP(i.unidad)}`), e('td', { class: 'n' }, mx(i.subtotal)))),
             e('tr', { class: 'total' }, e('td', {}, 'Total'), e('td', {}), e('td', {}), e('td', { class: 'n', 'data-total-pedido': '1' }, mx(p.total))))), cerrar));
       }
       const preguntarAprobar = (p) => detalle.replaceChildren(confirmar(
@@ -86,31 +91,34 @@
       const pv = e('select', { 'aria-label': 'Proveedor', required: true }, e('option', { value: '' }, '— Elige un proveedor —'), ...provs.map((p) => e('option', { value: p.id }, p.nombre)));
       const nota = e('input', { maxlength: 300, placeholder: 'Opcional: horario de entrega, marca…' });
       const provActual = () => provs.find((p) => String(p.id) === pv.value);
-      const opcionesInsumo = () => { const p = provActual(); const ids = p && p.insumos && p.insumos.length ? new Set(p.insumos.map((i) => i.id)) : null; return insumos.filter((i) => !ids || ids.has(i.id)); };
+      // Solo se pueden pedir los insumos que el proveedor surte (con el precio que él da, que se captura en Proveedores)
+      const opcionesInsumo = () => { const p = provActual(); if (!p) return []; const pre = new Map((p.insumos || []).map((x) => [x.id, Number(x.precio_unitario)])); return insumos.filter((i) => pre.has(i.id)).map((i) => ({ ...i, precio: pre.get(i.id) })); };
       function linea(insumoId, cantidad) {
         const s = e('select', { 'aria-label': 'Insumo' }, e('option', { value: '' }, '— Insumo —'), ...opcionesInsumo().map((i) => e('option', { value: i.id }, `${i.nombre} (hay ${num(i.stock)} ${i.unidad})`)));
         const c = e('input', { type: 'number', min: '0', step: 'any', 'aria-label': 'Cantidad', placeholder: 'Cantidad' }), u = e('span', { class: 'mu u' }, '');
-        const pu = e('input', { type: 'number', min: '0', step: 'any', 'aria-label': 'Precio unitario (MXN)', placeholder: 'Precio unit.', 'data-precio': '1' }), im = e('span', { class: 'mu u', 'data-importe': '1' }, '');
+        const im = e('span', { class: 'mu u', 'data-importe': '1' }, '');
         if (insumoId) s.value = String(insumoId); if (cantidad) c.value = String(cantidad);
-        const imp = () => { im.textContent = Number(c.value) > 0 && pu.value !== '' ? mx(Number(c.value) * Number(pu.value)) : ''; total(); };
-        // El precio sale del costo unitario que se anotó para ESTE proveedor (si no lo tiene, el último costo del insumo); se puede ajustar
-        const act = () => { const i = insumos.find((x) => String(x.id) === s.value); u.textContent = i ? i.unidad : ''; const pr = provActual(), pp = i && pr && pr.insumos ? pr.insumos.find((x) => x.id === i.id) : null; pu.value = i ? String(pp ? pp.precio_unitario : i.costo_unitario) : ''; pu.title = pp ? 'Costo pactado con este proveedor' : 'Último costo registrado del insumo'; imp(); }; s.onchange = act; c.oninput = imp; pu.oninput = imp;
-        const fila = e('div', { class: 'lp' }, s, c, u, pu, im, e('button', { class: 'mini', type: 'button', 'aria-label': 'Quitar este insumo', onclick: () => fila.remove() }, '✕'));
-        fila.leer = () => ({ insumo_id: s.value, cantidad: c.value, precio_unitario: pu.value });
-        fila.importe = () => (Number(c.value) > 0 && pu.value !== '' ? Number(c.value) * Number(pu.value) : 0);
+        const actual = () => opcionesInsumo().find((x) => String(x.id) === s.value);
+        // El sistema calcula: cantidad (g o ml) × precio por gramo/ml del proveedor (precio por kg/L ÷ 1000). No se captura ni se sugiere ningún precio.
+        const imp = () => { const i = actual(); im.textContent = i && Number(c.value) > 0 ? mx(Number(c.value) * i.precio) : ''; total(); };
+        const act = () => { const i = actual(); u.textContent = i ? i.unidad : ''; c.placeholder = i ? `Cantidad en ${i.unidad === 'g' ? 'gramos' : i.unidad === 'ml' ? 'mililitros' : 'piezas'}` : 'Cantidad'; imp(); }; s.onchange = act; c.oninput = imp;
+        const fila = e('div', { class: 'lp' }, s, c, u, im, e('button', { class: 'mini', type: 'button', 'aria-label': 'Quitar este insumo', onclick: () => fila.remove() }, '✕'));
+        fila.leer = () => ({ insumo_id: s.value, cantidad: c.value });
+        fila.importe = () => { const i = actual(); return i && Number(c.value) > 0 ? Number(c.value) * i.precio : 0; };
         if (insumoId) act();
         lineas.append(fila); return fila;
       }
       const filas = () => [...lineas.children];
       const totalTxt = e('p', { class: 'total-cot', 'data-cotizacion': '1', role: 'status' }, '');
-      function total() { const t = filas().reduce((a, f) => a + (f.importe ? f.importe() : 0), 0); totalTxt.textContent = t > 0 ? `Cotización estimada: ${mx(t)}` + (esAdmin ? ' · se registrará como gasto de hoy al enviar.' : ' · se registra como gasto cuando administración la apruebe.') : ''; }
+      function total() { const t = filas().reduce((a, f) => a + (f.importe ? f.importe() : 0), 0); totalTxt.textContent = t > 0 ? `Cotización: ${mx(t)}` + (esAdmin ? ' · se registrará como gasto de hoy al enviar.' : ' · se registra como gasto cuando administración la apruebe.') : ''; }
       pv.onchange = () => {
         const p = provActual();
-        aviso.textContent = !p ? '' : esAdmin ? `Se enviará un correo a ${p.nombre} (${p.correo}). Si responde, su respuesta llegará a ${usuario.correo}. Las cantidades se suman al stock automáticamente al enviar.` : `Tu solicitud a ${p.nombre} llegará a administración. Solo cuando la apruebe se hará la compra.`;
+        aviso.textContent = !p ? '' : !(p.insumos || []).length ? `${p.nombre} todavía no tiene insumos con precio.${esAdmin ? ' Agrégalos en “Proveedores” para poder pedirle.' : ' Pídele a administración que los registre.'}` : esAdmin ? `Se enviará un correo a ${p.nombre} (${p.correo}). Si responde, su respuesta llegará a ${usuario.correo}. Las cantidades se suman al stock automáticamente al enviar.` : `Tu solicitud a ${p.nombre} llegará a administración. Solo cuando la apruebe se hará la compra.`;
         const previas = filas().map((f) => f.leer()); lineas.replaceChildren();
         const permitidos = new Set(opcionesInsumo().map((i) => String(i.id)));
-        previas.filter((x) => x.insumo_id && permitidos.has(x.insumo_id)).forEach((x) => { const f = linea(x.insumo_id, x.cantidad); });
+        previas.filter((x) => x.insumo_id && permitidos.has(x.insumo_id)).forEach((x) => { linea(x.insumo_id, x.cantidad); });
         if (!filas().length) linea();
+        total();
       };
       linea();
       const sug = e('button', { class: 'btn s', type: 'button' }, 'Agregar lo que está en reorden');
@@ -128,7 +136,6 @@
         const items = filas().map((x) => x.leer()).filter((x) => x.insumo_id || x.cantidad);
         if (!items.length) throw new Error('Agrega al menos un insumo con su cantidad.');
         if (items.some((x) => !x.insumo_id || !(Number(x.cantidad) > 0))) throw new Error('Cada renglón necesita un insumo y una cantidad mayor a 0.');
-        if (items.some((x) => x.precio_unitario === '' || !(Number(x.precio_unitario) >= 0))) throw new Error('Cada renglón necesita un precio unitario (0 o más).');
         if (new Set(items.map((x) => x.insumo_id)).size !== items.length) throw new Error('Un insumo está repetido: súmalo en un solo renglón.');
         const r = await api('/pedidos-proveedor', { method: 'POST', body: { proveedor_id: pv.value, items, nota: nota.value || undefined, suma_stock_en: 'envio' } });
         const p = r.pedido;
@@ -157,7 +164,7 @@
           lista = (await api('/proveedores' + (archivados ? '?inactivos=1' : ''))).proveedores;
           tabla.replaceChildren(e('div', { class: 'card tw' }, lista.length ? e('table', {}, e('thead', {}, e('tr', {}, ['Proveedor', 'Correo', 'Contacto', 'Teléfono', 'Surte', 'Pedidos', ''].map((x) => e('th', {}, x)))),
             e('tbody', {}, lista.map((p) => e('tr', {}, e('td', {}, e('b', {}, p.nombre), p.activo ? null : e('span', {}, ' ', chipC('Archivado', '#7D756B'))), e('td', {}, p.correo), e('td', {}, p.contacto || '—'), e('td', {}, p.telefono || '—'),
-              e('td', {}, p.insumos.length ? p.insumos.map((i) => `${i.nombre} (${mx(i.precio_unitario)}/${i.unidad})`).join(', ') : 'Cualquier insumo'), e('td', {}, String(p.pedidos)),
+              e('td', {}, p.insumos.length ? p.insumos.map((i) => `${i.nombre} (${mx(aCompra(i.precio_unitario, i.unidad))}/${UP(i.unidad)})`).join(', ') : 'Cualquier insumo'), e('td', {}, String(p.pedidos)),
               e('td', { class: 'acc' }, e('button', { class: 'mini', type: 'button', onclick: () => editar(p) }, 'Editar'),
                 p.activo ? e('button', { class: 'mini', type: 'button', onclick: () => preguntarEliminar(p) }, 'Eliminar') : null)))))
             : e('p', { class: 'mu' }, 'Aún no hay proveedores. Agrega el primero con el botón de arriba.')));
@@ -169,25 +176,25 @@
         const marcados = new Map(p ? p.insumos.map((i) => [i.id, i.precio_unitario]) : []);
         // Al marcar un insumo se pide su costo unitario con ESTE proveedor: de ahí sale la cotización de los pedidos
         const cks = insumos.map((i) => {
-          const k = e('input', { type: 'checkbox', value: i.id }), pu = e('input', { type: 'number', min: '0', step: 'any', 'aria-label': `Costo unitario de ${i.nombre} (MXN por ${i.unidad})`, placeholder: `$ por ${i.unidad}`, 'data-costo': String(i.id), class: 'costo-prov' });
-          k.checked = marcados.has(i.id); pu.value = marcados.has(i.id) ? String(marcados.get(i.id)) : '';
-          const sync = () => { pu.disabled = !k.checked; if (k.checked && pu.value === '' && Number(i.costo_unitario) > 0) pu.value = String(i.costo_unitario); if (!k.checked) pu.value = ''; };
-          k.onchange = sync; sync(); if (marcados.has(i.id)) pu.value = String(marcados.get(i.id));
+          const k = e('input', { type: 'checkbox', value: i.id }), pu = e('input', { type: 'number', min: '0', step: 'any', 'aria-label': `Precio unitario de ${i.nombre} (MXN por ${UP(i.unidad)})`, placeholder: `$ por ${UP(i.unidad)}`, 'data-costo': String(i.id), class: 'costo-prov' });
+          k.checked = marcados.has(i.id); pu.value = marcados.has(i.id) ? String(aCompra(marcados.get(i.id), i.unidad)) : '';
+          const sync = () => { pu.disabled = !k.checked; if (!k.checked) pu.value = ''; };
+          k.onchange = sync; sync(); if (marcados.has(i.id)) pu.value = String(aCompra(marcados.get(i.id), i.unidad));
           return [i, k, pu];
         });
         const act = e('input', { type: 'checkbox' }); act.checked = p ? p.activo : true;
         const err = caja(), b = e('button', { class: 'btn', type: 'submit' }, p ? 'Guardar cambios' : 'Guardar proveedor');
         const cerrar = e('button', { class: 'btn s', type: 'button', onclick: () => form.replaceChildren() }, 'Cancelar');
         const f = e('form', { onsubmit: enviar(b, err, async () => {
-          const body = { nombre: n.value, correo: c.value, contacto: ct.value, telefono: tl.value, notas: nt.value, insumos: cks.filter(([, k]) => k.checked).map(([i, , pu]) => ({ id: i.id, precio_unitario: pu.value })) };
+          const body = { nombre: n.value, correo: c.value, contacto: ct.value, telefono: tl.value, notas: nt.value, insumos: cks.filter(([, k]) => k.checked).map(([i, , pu]) => ({ id: i.id, precio_unitario: aBase(pu.value, i.unidad) })) };
           const sinPrecio = cks.find(([, k, pu]) => k.checked && !(Number(pu.value) > 0));
-          if (sinPrecio) throw new Error(`Escribe el costo unitario de ${sinPrecio[0].nombre} (mayor a 0).`);
+          if (sinPrecio) throw new Error(`Escribe el precio unitario de ${sinPrecio[0].nombre} por ${UP(sinPrecio[0].unidad)} (mayor a 0).`);
           if (p) body.activo = act.checked;
           await api(p ? `/proveedores/${p.id}` : '/proveedores', { method: p ? 'PUT' : 'POST', body });
           await cargar(); form.replaceChildren(e('div', { class: 'card' }, ok(p ? 'Proveedor actualizado.' : 'Proveedor agregado.')));
         }) }, campo('Nombre del proveedor', n), campo('Correo (aquí se mandan los pedidos)', c), campo('Persona de contacto (opcional)', ct), campo('Teléfono (opcional)', tl), campo('Notas (opcional)', nt),
-          e('h3', {}, '¿Qué insumos te surte y a qué costo?'), e('p', { class: 'mu' }, 'Marca cada insumo y escribe su costo unitario con este proveedor (precio por gramo, ml o pieza). Con ese costo se calcula la cotización de tus pedidos. Si no marcas ninguno, podrás pedirle cualquier insumo al costo registrado en el inventario.'),
-          e('div', { class: 'lista-insumos' }, ...cks.map(([i, k, pu]) => e('div', { class: 'ins-prov' }, e('label', { class: 'chk' }, k, `${i.nombre} (${i.unidad})`), pu))),
+          e('h3', {}, '¿Qué insumos te surte y a qué costo?'), e('p', { class: 'mu' }, 'Marca cada insumo que te surte y escribe el precio unitario que te da este proveedor: por kilo (insumos en gramos), por litro (insumos en mililitros) o por pieza. Al hacerle un pedido eliges la cantidad en gramos o mililitros y el sistema calcula la cotización con ese precio.'),
+          e('div', { class: 'lista-insumos' }, ...cks.map(([i, k, pu]) => e('div', { class: 'ins-prov' }, e('label', { class: 'chk' }, k, `${i.nombre} (por ${UP(i.unidad)})`), pu))),
           p ? e('label', { class: 'chk' }, act, 'Proveedor activo') : null, err, e('div', { class: 'row' }, b, cerrar));
         form.replaceChildren(e('div', { class: 'card' }, e('h3', {}, p ? `Editar · ${p.nombre}` : 'Agregar proveedor'), f)); form.scrollIntoView && form.scrollIntoView({ block: 'nearest' });
       }

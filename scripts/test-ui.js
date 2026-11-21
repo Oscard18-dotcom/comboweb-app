@@ -122,7 +122,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('la pantalla de pago pide titular, número, vencimiento y CVV', ['titular', 'numero', 'vence', 'cvv'].every((c) => !!d2.querySelector('#' + c)));
     t('la pantalla de pago no muestra el rótulo SIMULADO, el aviso de práctica ni la lista de tarjetas de prueba', !/simulad/i.test(d2.body.textContent) && !/pasarela de práctica|tarjetas de prueba|no se cobra nada/i.test(d2.body.textContent) && !d2.querySelector('#pruebas') && d2.querySelector('#aprobar').textContent === 'Pagar');
     enviarForm(w2, d2.querySelector('#form'));
-    t('pagar sin llenar nada marca los 4 campos con su error', ['titular', 'numero', 'vence', 'cvv'].every((c) => d2.querySelector('#e-' + c).textContent.length > 5 && d2.querySelector('#' + c).getAttribute('aria-invalid') === 'true'));
+    t('pagar sin llenar nada marca los 4 campos con su error', await until(() => ['titular', 'numero', 'vence', 'cvv'].every((c) => d2.querySelector('#e-' + c).textContent.length > 5 && d2.querySelector('#' + c).getAttribute('aria-invalid') === 'true')));
     f2('titular', 'Cliente Prueba'); f2('numero', '4242424242424241'); f2('vence', '1239'); f2('cvv', '123');
     t('el número se escribe con espacios y el vencimiento con diagonal', d2.querySelector('#numero').value === '4242 4242 4242 4241' && d2.querySelector('#vence').value === '12/39');
     enviarForm(w2, d2.querySelector('#form'));
@@ -203,7 +203,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const menuP = w.document.querySelector('#staff [data-periodo]'); const cambiarP = (v) => { menuP.value = v; menuP.dispatchEvent(new w.Event('change', { bubbles: true })); };
     t('dashboard: los calendarios de fechas están ocultos hasta elegir "Elegir fechas…"', w.document.querySelector('#staff [data-fechas]').hidden === true);
     cambiarP('total');
-    t('al elegir Histórico total se consulta ese periodo y el panel muestra cifras', await until(() => w.__urls.some((x) => /ventas-periodo\?periodo=total/.test(x)) && !!w.document.querySelector('#staff [data-ventas-periodo]') && !/Ticket promedio|Utilidad bruta|Margen/.test($('#staff [data-ventas-periodo]').textContent) && !!w.document.querySelector('#staff svg.grafica') && !!w.document.querySelector('#staff [data-ganancia-total]')));
+    t('al elegir Histórico total se consulta ese periodo y el panel muestra cifras', await until(() => w.__urls.some((x) => /ventas-periodo\?periodo=total/.test(x)) && !!w.document.querySelector('#staff [data-ventas-periodo]') && /Ingresos totales/.test($('#staff [data-ventas-periodo]').textContent) && /Gastos totales/.test($('#staff [data-ventas-periodo]').textContent) && /Utilidad bruta/.test($('#staff [data-ventas-periodo]').textContent) && /Utilidad neta/.test($('#staff [data-ventas-periodo]').textContent) && /Margen/.test($('#staff [data-ventas-periodo]').textContent) && !/Ticket promedio/.test($('#staff [data-ventas-periodo]').textContent) && !!w.document.querySelector('#staff svg.grafica') && !!w.document.querySelector('#staff [data-ganancia-total]')));
     cambiarP('ultimos30');
         t('Últimos 30 días muestra un rango de 30 días hasta hoy', await until(async () => { const m = /Del (\d\d)\/(\d\d)\/(\d{4}) al (\d\d)\/(\d\d)\/(\d{4})/.exec($('#staff').textContent); return !!m && Math.round((Date.UTC(+m[6], +m[5] - 1, +m[4]) - Date.UTC(+m[3], +m[2] - 1, +m[1])) / 864e5) === 29; }));
     cambiarP('rango');
@@ -340,8 +340,13 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const campos7 = pf.querySelectorAll('input:not([type=checkbox])'); cambiar(w, campos7[0], NP); cambiar(w, campos7[1], 'correo-malo');
     enviarForm(w, pf);
     t('proveedores: un correo inválido muestra el error y no guarda nada', await until(() => /correo válido/i.test($('#staff .errbox').textContent)) && (await db.query('SELECT 1 FROM proveedores WHERE nombre=$1', [NP])).rows.length === 0);
-    cambiar(w, campos7[1], `ventas${R}@ui7.test`); enviarForm(w, pf);
-    t('proveedores: se agrega y aparece en la tabla', await until(() => [...w.document.querySelectorAll('#staff tbody tr')].some((r) => r.textContent.includes(NP) && r.textContent.includes('Cualquier insumo'))) && limpio(w));
+    cambiar(w, campos7[1], `ventas${R}@ui7.test`);
+    // Precio por kilo/litro: Harina $22/kg (= 0.022 por gramo) y Té chai $500/kg
+    const marcarIns = (id, precio) => { const k = pf.querySelector(`.lista-insumos input[type=checkbox][value="${id}"]`); k.checked = true; k.dispatchEvent(new w.Event('change')); cambiar(w, pf.querySelector(`input[data-costo="${id}"]`), precio); };
+    t('proveedores: el precio de cada insumo se pide por kilo o litro', /por kg/.test(pf.querySelector(`input[data-costo="${harinaId}"]`).placeholder) && /por L/.test(pf.querySelector(`input[data-costo="${(await db.query("SELECT id FROM insumos WHERE nombre='Leche'")).rows[0].id}"]`).placeholder));
+    marcarIns(harinaId, '22'); marcarIns((await db.query("SELECT id FROM insumos WHERE nombre='Té chai'")).rows[0].id, '500');
+    enviarForm(w, pf);
+    t('proveedores: se agrega y aparece en la tabla', await until(() => [...w.document.querySelectorAll('#staff tbody tr')].some((r) => r.textContent.includes(NP) && r.textContent.includes('Harina') && /\$22\.00\/kg/.test(r.textContent))) && Number((await db.query('SELECT pi.precio_unitario p FROM proveedor_insumos pi JOIN proveedores v ON v.id=pi.proveedor_id WHERE v.nombre=$1 AND pi.insumo_id=$2', [NP, harinaId])).rows[0].p) === 0.022 && (true) && limpio(w));
     // ---- nuevo pedido: se suma "al recibir"
     sub('Nuevo pedido').click();
     await until(() => $('#staff select[aria-label=Proveedor]'));
@@ -350,6 +355,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const stock0 = await stockH();
     let lin = $('#staff .lp'); cambiar(w, lin.querySelector('select'), String(harinaId)); cambiar(w, lin.querySelector('input'), '150');
     t('nuevo pedido: al elegir el insumo muestra su unidad', lin.querySelector('.u').textContent === 'g');
+    t('nuevo pedido: no pide ni sugiere precio; el sistema calcula la cotización (150 g × $22/kg = $3.30)', !$('#staff [data-precio]') && !$('#staff input[aria-label*=Precio]') && /3\.30/.test($('#staff [data-importe]').textContent) && /Cotización: \$3\.30/.test($('#staff [data-cotizacion]').textContent) && /gramos/.test(lin.querySelector('input').placeholder));
     t('nuevo pedido: el formulario ya no pide fecha ni cuándo sumar al stock', !$('#staff input[name=suma]') && !$('#staff input[type=date]') && !/Cuándo se suma|Para cuándo/.test($('#staff').textContent));
     enviarForm(w, $('#staff form'));
     t('nuevo pedido: confirma el envío del correo y suma el stock de inmediato', await until(() => /Pedido PP-\d{4} enviado/.test($('#staff').textContent) && /correo a UI7 Proveedor/.test($('#staff').textContent)) && /ya se sumó al inventario/i.test($('#staff').textContent) && (await stockH()) === stock0 + 150 && limpio(w));
@@ -427,6 +433,11 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('usuarios: solo cocina y almacén tienen botón Eliminar (admin y clientes no)', [...w.document.querySelectorAll('#staff tbody tr')].every((tr) => { const rol = tr.querySelector('select').value; return /Eliminar/.test(tr.textContent) === (rol === 'cocina' || rol === 'almacen'); }));
     botonF(`ui6staff${R}`, 'Eliminar').click(); [...w.document.querySelectorAll('#staff button')].find((b) => b.textContent === 'Sí, eliminar cuenta').click();
     t('usuarios: eliminar una cuenta de almacén la borra de la base', await until(async () => (await db.query('SELECT 1 FROM usuarios WHERE correo=$1', [`ui6staff${R}@prueba.test`])).rows.length === 0));
+    w.document.querySelector('#btn-cuenta').click();
+    t('mi cuenta (admin): pantalla aparte con correo y contraseña, sin nombre ni tarjetas ni eliminar', await until(() => !w.document.querySelector('#cuenta').hidden && w.document.querySelector('#staff').hidden && w.document.querySelector('#cuenta form[data-form=datos]') && w.document.querySelector('#cuenta form[data-form=password]'))
+      && !w.document.querySelector('#cuenta input[name=nombre]') && !w.document.querySelector('[data-agregar-tarjeta]') && !w.document.querySelector('[data-eliminar-cuenta]') && /Volver al panel/.test(w.document.querySelector('[data-volver-cuenta]').textContent));
+    w.document.querySelector('[data-volver-cuenta]').click();
+    t('mi cuenta (admin): "Volver al panel" regresa al panel', await until(() => w.document.querySelector('#cuenta').hidden && !w.document.querySelector('#staff').hidden));
 
     /* ---------- MI CUENTA (cambio de contraseña) ---------- */
     const rc = await (await fetch(B + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acepta_privacidad: true, nombre: 'Cuenta UI6', correo: `ui6cta${R}@prueba.test`, password: 'secreta123' }) })).json();
@@ -508,6 +519,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('reportes: Existencias (foto del inventario) no usa periodo y oculta el menú', await until(() => menuR().closest('div.noprint').hidden === true));
     // Almacén: solicitud → administrador aprueba
     await db.query("INSERT INTO proveedores(nombre,correo) VALUES('UI7 Prov11','p11@ui7.test')");
+    await db.query("INSERT INTO proveedor_insumos(proveedor_id,insumo_id,precio_unitario) SELECT p.id,$1,0.1 FROM proveedores p WHERE p.nombre='UI7 Prov11'", [harinaId]);   // $100 por kg = $0.10 por gramo
     const wal = await abrirComo('almacen@encombo.test');
     pestDe(wal, 'Pedidos a proveedor').click();
     await until(() => subDe(wal, 'Solicitar reabastecimiento'));
@@ -516,10 +528,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     await until(() => wal.document.querySelector('#staff select[aria-label=Proveedor]'));
     cambiar(wal, wal.document.querySelector('#staff select[aria-label=Proveedor]'), String((await db.query("SELECT id FROM proveedores WHERE nombre='UI7 Prov11'")).rows[0].id));
     const lnA = wal.document.querySelector('#staff .lp'); cambiar(wal, lnA.querySelector('select'), String(harinaId)); cambiar(wal, lnA.querySelector('input[aria-label=Cantidad]'), '100');
-    const costoH = Number((await db.query('SELECT costo_unitario FROM insumos WHERE id=$1', [harinaId])).rows[0].costo_unitario);
-    t('solicitud: el precio unitario se sugiere con el costo del insumo y se calcula la cotización', Number(lnA.querySelector('input[data-precio]').value) === costoH && /Cotización estimada: \$/.test(wal.document.querySelector('#staff [data-cotizacion]').textContent));
-    cambiar(wal, lnA.querySelector('input[data-precio]'), '0.1');
-    t('solicitud: al cambiar el precio se recalcula (100 × 0.10 = $10.00)', await until(() => /\$10\.00/.test(wal.document.querySelector('#staff [data-cotizacion]').textContent)));
+    t('solicitud: no muestra campo de precio y la cotización la calcula el sistema (100 g × $100/kg = $10.00)', !wal.document.querySelector('#staff [data-precio]') && await until(() => /Cotización: \$10\.00/.test(wal.document.querySelector('#staff [data-cotizacion]').textContent)));
     t('solicitud: el botón dice "Enviar solicitud a administración"', /Enviar solicitud a administración/.test(wal.document.querySelector('#staff form button[type=submit]').textContent));
     enviarForm(wal, wal.document.querySelector('#staff form'));
     t('solicitud: confirma que quedó pendiente de aprobación', await until(() => /Solicitud PP-\d{4} enviada/.test(wal.document.querySelector('#staff').textContent) && /pendiente de aprobación/.test(wal.document.querySelector('#staff').textContent)));
@@ -569,18 +578,19 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const ck1 = pfA.querySelector('.ins-prov input[type=checkbox]'), pu1 = pfA.querySelector('.ins-prov input.costo-prov');
     t('proveedor: cada insumo tiene su casilla de costo unitario, bloqueada hasta marcarlo', !!ck1 && !!pu1 && pu1.disabled === true);
     ck1.checked = true; ck1.dispatchEvent(new wad.Event('change', { bubbles: true }));
-    t('proveedor: al marcar el insumo se activa el costo y se sugiere el del inventario', pu1.disabled === false && Number(pu1.value) > 0);
+    t('proveedor: al marcar el insumo se activa el precio (vacío: lo da el proveedor, no se sugiere)', pu1.disabled === false && pu1.value === '');
     const NP2 = 'UI7 Costo ' + R; const cA = pfA.querySelectorAll('input:not([type=checkbox]):not(.costo-prov)');
     cambiar(wad, cA[0], NP2); cambiar(wad, cA[1], `costo${R}@ui7.test`); cambiar(wad, pu1, '');
     enviarForm(wad, pfA);
-    t('proveedor: sin costo unitario no se guarda y lo pide', await until(() => /costo unitario/i.test(wad.document.querySelector('#staff .errbox').textContent)) && (await db.query('SELECT 1 FROM proveedores WHERE nombre=$1', [NP2])).rows.length === 0);
-    cambiar(wad, pu1, '0.031'); enviarForm(wad, pfA);
-    t('proveedor: con su costo unitario se guarda y la tabla lo muestra', await until(() => [...wad.document.querySelectorAll('#staff tbody tr')].some((r) => r.textContent.includes(NP2) && /\$0\.03/.test(r.textContent))));
+    t('proveedor: sin precio unitario no se guarda y lo pide', await until(() => /precio unitario/i.test(wad.document.querySelector('#staff .errbox').textContent)) && (await db.query('SELECT 1 FROM proveedores WHERE nombre=$1', [NP2])).rows.length === 0);
+    cambiar(wad, pu1, '31'); enviarForm(wad, pfA);
+    t('proveedor: con su costo unitario se guarda y la tabla lo muestra', await until(() => [...wad.document.querySelectorAll('#staff tbody tr')].some((r) => r.textContent.includes(NP2) && /\$31\.00\/kg/.test(r.textContent))));
     // Mi cuenta de un cliente
     const rcA = await (await fetch(B + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acepta_privacidad: true, nombre: 'Cuenta UI6 Arco', correo: `ui6arco${R}@prueba.test`, password: 'secreta123' }) })).json();
     const wcl = (await abrir(B + '/', { t: rcA.token, u: JSON.stringify(rcA.usuario) })).window, $cl = (q2) => wcl.document.querySelector(q2);
     await until(() => !$cl('#btn-cuenta').hidden); $cl('#btn-cuenta').click();
     t('mi cuenta: tiene datos, contraseña, tarjetas y privacidad (derechos ARCO)', await until(() => $cl('#cuenta form[data-form=datos]') && $cl('#cuenta form[data-form=password]') && $cl('[data-agregar-tarjeta]') && $cl('[data-eliminar-cuenta]') && /Aviso de privacidad/.test($cl('#cuenta').textContent)));
+    t('mi cuenta (cliente): es una pantalla aparte y ofrece volver a hacer un nuevo pedido', $cl('#cuenta').hidden === false && $cl('#nav').hidden === true && $cl('#armar').hidden === true && $cl('#mis').hidden === true && /Volver a hacer un nuevo pedido/.test($cl('[data-volver-cuenta]').textContent));
     const fdA = $cl('#cuenta form[data-form=datos]');
     cambiar(wcl, fdA.elements.nombre, 'Nombre Cambiado'); enviarForm(wcl, fdA);
     t('mi cuenta: modifica el nombre y se refleja en la sesión', await until(() => /Datos actualizados/.test($cl('#cuenta').textContent) && /Nombre Cambiado/.test($cl('#who').textContent)) && (await db.query('SELECT nombre FROM usuarios WHERE id=$1', [rcA.usuario.id])).rows[0].nombre === 'Nombre Cambiado');

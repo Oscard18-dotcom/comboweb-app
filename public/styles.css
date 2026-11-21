@@ -97,9 +97,9 @@ td{padding:6px 8px;border-bottom:1px solid var(--ln);vertical-align:middle}
 /* Sprint 7: pedidos a proveedor */
 .lista-insumos{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 12px;border:1px solid var(--ln);border-radius:8px;padding:8px 10px;max-height:190px;overflow:auto;margin-bottom:10px}
 .lista-insumos .chk{margin:0}
-.lp{display:grid;grid-template-columns:minmax(0,1fr) 90px 36px 100px 92px 36px;gap:6px;align-items:center;margin-bottom:6px}
+.lp{display:grid;grid-template-columns:minmax(0,1fr) 150px 36px 100px 36px;gap:6px;align-items:center;margin-bottom:6px}
 .lp select,.lp input{min-width:0;width:100%}
-@media(max-width:560px){.lp{grid-template-columns:minmax(0,1fr) 70px 28px 78px 70px 36px}}
+@media(max-width:560px){.lp{grid-template-columns:minmax(0,1fr) 110px 28px 80px 36px}}
 .total-cot{font-weight:700;margin:8px 0}
 .ficha-dl{display:grid;grid-template-columns:140px 1fr;gap:4px 10px;margin:8px 0}.ficha-dl dt{color:var(--mu)}.ficha-dl dd{margin:0;overflow-wrap:anywhere}
 .aviso{background:var(--sel);border:1px solid var(--ln);border-radius:8px;padding:8px 12px;margin:8px 0}

@@ -15,7 +15,7 @@ const cant4 = (v) => {
 // Precio unitario: número >= 0 con máximo 4 decimales (null si no es válido)
 const precio4 = (v) => {
   const n = typeof v === 'string' && v.trim() !== '' ? Number(v) : v;
-  return typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1e6 && Math.abs(n * 1e4 - Math.round(n * 1e4)) < 1e-6 ? Math.round(n * 1e4) / 1e4 : null;
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1e6 && Math.abs(n * 1e6 - Math.round(n * 1e6)) < 1e-6 ? Math.round(n * 1e6) / 1e6 : null;
 };
 const r2 = (n) => Math.round(n * 100) / 100;
 
@@ -66,7 +66,7 @@ function leerItems(b) {
     const pun = it && it.precio_unitario;
     if (pun !== undefined && pun !== null && pun !== '') {
       pu = precio4(pun);
-      if (pu === null) throw err(400, 'Cada precio debe ser un número de 0 o más (máximo 4 decimales).');
+      if (pu === null) throw err(400, 'Cada precio debe ser un número de 0 o más (máximo 6 decimales).');
     }
     vistos.add(id); items.push({ id, cant, pu });
   }
