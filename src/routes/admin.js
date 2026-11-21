@@ -200,6 +200,20 @@ router.patch('/usuarios/:id/password', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Cambiar el correo de una cuenta del personal. Solo cocina y almacén: nunca otro administrador ni un cliente.
+router.patch('/usuarios/:id/correo', wrap(async (req, res) => {
+  const id = paramId(req), correo = String((req.body || {}).correo || '').trim().toLowerCase();
+  if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
+  if (!isEmail(correo)) return res.status(400).json({ error: 'Escribe un correo válido.' });
+  const t = (await db.query('SELECT id,rol FROM usuarios WHERE id=$1', [id])).rows[0];
+  if (!t) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (!['cocina', 'almacen'].includes(t.rol)) return res.status(403).json({ error: 'Solo puedes cambiar el correo de cuentas de cocina o almacén. El de un administrador o un cliente solo lo cambia su dueño.' });
+  try {
+    const { rows } = await db.query('UPDATE usuarios SET correo=$2, token_version=token_version+1 WHERE id=$1 RETURNING id,nombre,correo,rol,activo', [id, correo]);
+    res.json({ usuario: rows[0] });
+  } catch (e) { if (e.code === '23505') return res.status(409).json({ error: 'Ese correo ya está registrado con otra cuenta.' }); throw e; }
+}));
+
 // Eliminar una cuenta del personal. Solo cocina y almacén: nunca otro administrador ni un cliente.
 // Las bitácoras (inventario, estatus, compras) conservan su registro pero sin el nombre de la persona.
 router.delete('/usuarios/:id', wrap(async (req, res) => {

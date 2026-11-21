@@ -105,7 +105,7 @@ async function ventasPorCombo(desde, hasta) {
   const fila = (clave, nombre, contenido, x) => ({ clave, nombre, contenido, pedidos: x ? x.pedidos : 0, piezas: x ? x.piezas : 0, ventas: x ? r2(x.ventas) : 0 });
   const vivos = await combosSvc.listar();
   const lista = vivos.map((c) => fila(c.clave, c.nombre, c.items.map((i) => `${i.cantidad} ${i.nombre}`).join(' + '), por.get(c.clave)));
-  lista.push(fila('personalizado', 'Combo personalizado', 'Cualquier mezcla', por.get('personalizado')));
+  const iPers = lista.push(fila('personalizado', 'Combo personalizado', 'Cualquier mezcla', por.get('personalizado'))) - 1;
   const conocidos = new Set(['personalizado', ...vivos.map((c) => c.clave)]);
   let resto = { pedidos: 0, piezas: 0, ventas: 0 };
   for (const x of rows) {
@@ -113,7 +113,8 @@ async function ventasPorCombo(desde, hasta) {
     if (x.combo) lista.push(fila(x.combo, `${x.combo_nombre || x.combo} (eliminado)`, '—', x));
     else resto = { pedidos: resto.pedidos + x.pedidos, piezas: resto.piezas + x.piezas, ventas: resto.ventas + Number(x.ventas) };
   }
-  if (resto.pedidos) lista.push(fila('anteriores', 'Sin combo (pedidos anteriores)', '—', resto));
+  // Los pedidos anteriores (sin combo registrado) se cuentan como pedidos personalizados
+  if (resto.pedidos) { const p0 = lista[iPers]; lista[iPers] = { ...p0, pedidos: p0.pedidos + resto.pedidos, piezas: p0.piezas + resto.piezas, ventas: r2(p0.ventas + resto.ventas) }; }
   return lista;
 }
 

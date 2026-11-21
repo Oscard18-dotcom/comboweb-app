@@ -12,51 +12,95 @@
     const kp = (t, v, color) => e('div', { class: 'card' }, e('small', { class: 'mu' }, t), e('b', { style: color ? 'color:' + color : '' }, v));
     const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
     const etq = (p, u) => { const [f, h] = p.split(' '), [y, m, d] = f.split('-'); return u === 'hour' ? h : u === 'day' ? `${d}/${m}` : u === 'week' ? `Semana del ${d}/${m}` : u === 'month' ? `${MES[Number(m) - 1]} ${y}` : y; };
-    /* ---- Gráficas en SVG (sin librerías; colores de la paleta) ---- */
+    /* ---- Gráficas en SVG animadas (sin librerías; colores de la paleta) ---- */
     const NS = 'http://www.w3.org/2000/svg';
     const sv = (tag, at = {}, ...hijos) => { const n = document.createElementNS(NS, tag); for (const [k, val] of Object.entries(at)) n.setAttribute(k, String(val)); hijos.forEach((h) => n.append(h)); return n; };
     const txt = (at, t) => { const n = sv('text', at); n.textContent = t; return n; };
     const COL = ['#3F210E', '#6A6141', '#917A79', '#3E5B3A', '#8A4B2A', '#7D756B'];
-    function graficaBarras(serie, unidad) {
-      if (!serie.length) return e('p', { class: 'mu' }, 'Sin datos para graficar.');
-      const W = 560, Hh = 230, L = 52, B = 34, T = 14, R = 8, max = Math.max(1, ...serie.map((x) => x.ventas));
-      const ancho = (W - L - R) / serie.length, bw = Math.max(4, Math.min(46, ancho * 0.62)), alto = Hh - B - T;
-      const salto = Math.ceil(serie.length / 8);
-      const g = sv('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': 'Gráfica de barras de ventas por periodo', class: 'grafica' }, sv('title', {}));
-      g.firstChild.textContent = 'Ventas por periodo (MXN)';
-      [0, 0.5, 1].forEach((f) => {
-        const y = T + alto - alto * f;
-        g.append(sv('line', { x1: L, x2: W - R, y1: y, y2: y, stroke: '#E3D5C0', 'stroke-width': 1 }), txt({ x: L - 6, y: y + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#3F210E' }, mx(max * f).replace(/\.00$/, '')));
-      });
-      serie.forEach((x, i) => {
-        const h = x.ventas / max * alto, cx = L + ancho * i + ancho / 2;
-        const r = sv('rect', { x: cx - bw / 2, y: T + alto - h, width: bw, height: Math.max(h, x.ventas > 0 ? 2 : 0), rx: 3, fill: '#3F210E' }, sv('title', {}));
-        r.firstChild.textContent = `${etq(x.periodo, unidad)}: ${mx(x.ventas)} · ${x.pedidos} pedido(s)`;
-        g.append(r);
-        if (i % salto === 0) g.append(txt({ x: cx, y: Hh - 12, 'text-anchor': 'middle', 'font-size': 11, fill: '#3F210E' }, unidad === 'week' ? etq(x.periodo, 'day') : etq(x.periodo, unidad)));
-      });
-      return g;
+    let nGraf = 0;
+    // Contenedor con globo de información al pasar el mouse (o tocar)
+    function envolver(...hijos) {
+      const globo = e('div', { class: 'chart-tip', role: 'status', hidden: true }), w = e('div', { class: 'chart-w' }, ...hijos, globo);
+      w.mostrar = (ev, lineas) => { globo.replaceChildren(...lineas.map((l, i) => e(i ? 'span' : 'b', {}, l))); globo.hidden = false; const r = w.getBoundingClientRect(); globo.style.left = Math.min(Math.max(ev.clientX - r.left + 12, 4), Math.max(r.width - 170, 4)) + 'px'; globo.style.top = Math.max(ev.clientY - r.top - 54, 0) + 'px'; };
+      w.ocultar = () => { globo.hidden = true; };
+      return w;
     }
-    function graficaPastel(items) {
+    const conGlobo = (nodo, w, lineas, extra) => { nodo.addEventListener('mousemove', (ev) => w.mostrar(ev, lineas)); nodo.addEventListener('mouseenter', (ev) => { w.mostrar(ev, lineas); if (extra) extra(true); }); nodo.addEventListener('mouseleave', () => { w.ocultar(); if (extra) extra(false); }); nodo.addEventListener('click', (ev) => w.mostrar(ev, lineas)); };
+    // Curva suave que no se pasa de los puntos (cúbica monótona)
+    function suave(pts) {
+      const n = pts.length; if (n < 2) return `M${pts[0][0]},${pts[0][1]}`;
+      const dx = [], m = [], t = [];
+      for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; m[i] = (pts[i + 1][1] - pts[i][1]) / dx[i]; }
+      t[0] = m[0]; t[n - 1] = m[n - 2];
+      for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+      for (let i = 0; i < n - 1; i++) { if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; } else { const a = t[i] / m[i], b = t[i + 1] / m[i], q = a * a + b * b; if (q > 9) { const k = 3 / Math.sqrt(q); t[i] = k * a * m[i]; t[i + 1] = k * b * m[i]; } } }
+      let d = `M${pts[0][0]},${pts[0][1]}`;
+      for (let i = 0; i < n - 1; i++) d += ` C${pts[i][0] + dx[i] / 3},${pts[i][1] + t[i] * dx[i] / 3} ${pts[i + 1][0] - dx[i] / 3},${pts[i + 1][1] - t[i + 1] * dx[i] / 3} ${pts[i + 1][0]},${pts[i + 1][1]}`;
+      return d;
+    }
+    // Línea con área: ventas a lo largo del periodo
+    function graficaLinea(serie, unidad) {
+      if (!serie.length) return e('p', { class: 'mu' }, 'Sin datos para graficar.');
+      const id = 'g' + (++nGraf), W = 560, Hh = 240, L = 58, B = 34, T = 16, R = 14, max = Math.max(1, ...serie.map((x) => x.ventas)) * 1.1, alto = Hh - B - T, n = serie.length;
+      const X = (i) => (n === 1 ? (L + W - R) / 2 : L + (W - L - R) * i / (n - 1)), Y = (v) => T + alto - v / max * alto;
+      const pts = serie.map((x, i) => [X(i), Y(x.ventas)]);
+      const g = sv('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': 'Gráfica de línea: ventas a lo largo del periodo', class: 'grafica' });
+      g.append(sv('defs', {}, (() => { const lg = sv('linearGradient', { id: id + 'f', x1: 0, y1: 0, x2: 0, y2: 1 }); lg.append(sv('stop', { offset: '0%', 'stop-color': '#6A6141', 'stop-opacity': 0.45 }), sv('stop', { offset: '100%', 'stop-color': '#6A6141', 'stop-opacity': 0.02 })); return lg; })()));
+      [0, 0.5, 1].forEach((f) => { const y = T + alto - alto * f * (1 / 1.1) * 1.1; g.append(sv('line', { x1: L, x2: W - R, y1: Y(max / 1.1 * f), y2: Y(max / 1.1 * f), stroke: '#E3D5C0', 'stroke-width': 1 }), txt({ x: L - 8, y: Y(max / 1.1 * f) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#3F210E' }, mx(max / 1.1 * f).replace(/\.00$/, ''))); });
+      const base = T + alto;
+      if (n > 1) {
+        g.append(sv('path', { d: `${suave(pts)} L${pts[n - 1][0]},${base} L${pts[0][0]},${base} Z`, fill: `url(#${id}f)`, class: 'g-area' }));
+        g.append(sv('path', { d: suave(pts), fill: 'none', stroke: '#3F210E', 'stroke-width': 2.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', pathLength: 1, class: 'g-linea' }));
+      }
+      const salto = Math.ceil(n / 8), w = envolver(g);
+      serie.forEach((x, i) => {
+        if (i % salto === 0) g.append(txt({ x: pts[i][0], y: Hh - 12, 'text-anchor': 'middle', 'font-size': 11, fill: '#3F210E' }, unidad === 'week' ? etq(x.periodo, 'day') : etq(x.periodo, unidad)));
+        const punto = sv('circle', { cx: pts[i][0], cy: pts[i][1], r: n > 40 ? 2.5 : 4, fill: '#FFFDF9', stroke: '#3F210E', 'stroke-width': 2, class: 'g-punto', style: `animation-delay:${0.6 + i * 0.03}s` });
+        const zona = sv('circle', { cx: pts[i][0], cy: pts[i][1], r: 12, fill: 'transparent' }, sv('title', {}));
+        zona.firstChild.textContent = `${etq(x.periodo, unidad)}: ${mx(x.ventas)} · ${x.pedidos} pedido(s)`;
+        g.append(punto, zona);
+        conGlobo(zona, w, [etq(x.periodo, unidad), `Ventas: ${mx(x.ventas)}`, `Pedidos: ${x.pedidos}`], (on) => { punto.setAttribute('r', on ? 6 : (n > 40 ? 2.5 : 4)); punto.setAttribute('fill', on ? '#3F210E' : '#FFFDF9'); });
+      });
+      return w;
+    }
+    // Dona: ventas por combo (los pedidos sin combo ya vienen sumados a «Combo personalizado»)
+    function graficaDona(items) {
       const datos = items.filter((x) => x.ventas > 0).sort((a, b) => b.ventas - a.ventas);
       if (!datos.length) return e('p', { class: 'mu' }, 'Sin ventas para graficar.');
       const top = datos.slice(0, 5), resto = datos.slice(5).reduce((a, x) => a + x.ventas, 0);
       if (resto > 0) top.push({ nombre: 'Otros', ventas: resto });
-      const tot = top.reduce((a, x) => a + x.ventas, 0), R0 = 80, c = 90;
-      const g = sv('svg', { viewBox: '0 0 180 180', role: 'img', 'aria-label': 'Gráfica de pastel de ventas por combo', class: 'grafica pastel' });
-      let ang = -Math.PI / 2;
+      const tot = top.reduce((a, x) => a + x.ventas, 0), r = 62, C = 2 * Math.PI * r;
+      const g = sv('svg', { viewBox: '0 0 180 180', role: 'img', 'aria-label': 'Gráfica de dona: ventas por combo', class: 'grafica dona' });
+      g.append(sv('circle', { cx: 90, cy: 90, r, fill: 'none', stroke: '#EEE4D0', 'stroke-width': 28 }));
+      const centro1 = txt({ 'pointer-events': 'none', x: 90, y: 86, 'text-anchor': 'middle', 'font-size': 11, fill: '#6A5A4C' }, 'Ventas'), centro2 = txt({ 'pointer-events': 'none', x: 90, y: 104, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 700, fill: '#3F210E' }, mx(tot).replace(/\.00$/, ''));
+      const leyenda = e('ul', { class: 'leyenda' }), w = envolver(e('div', { class: 'pastel-w' }, g, leyenda));
+      const segs = []; let acum = 0;
       top.forEach((x, i) => {
-        const frac = x.ventas / tot, fin = ang + frac * 2 * Math.PI, col = COL[i % COL.length];
-        const t = sv('title', {}); t.textContent = `${x.nombre}: ${mx(x.ventas)} (${Math.round(frac * 1000) / 10} %)`;
-        if (top.length === 1) g.append(sv('circle', { cx: c, cy: c, r: R0, fill: col }, t));
-        else {
-          const x1 = c + R0 * Math.cos(ang), y1 = c + R0 * Math.sin(ang), x2 = c + R0 * Math.cos(fin), y2 = c + R0 * Math.sin(fin);
-          g.append(sv('path', { d: `M${c},${c} L${x1},${y1} A${R0},${R0} 0 ${frac > 0.5 ? 1 : 0} 1 ${x2},${y2} Z`, fill: col, stroke: '#FFFDF9', 'stroke-width': 2 }, t));
-        }
-        ang = fin;
+        const frac = x.ventas / tot, len = Math.max(frac * C - (top.length > 1 ? 2 : 0), 0.5), col = COL[i % COL.length], lineas = [x.nombre, `Ventas: ${mx(x.ventas)}`, `${Math.round(frac * 1000) / 10} % del total`];
+        const c = sv('circle', { cx: 90, cy: 90, r, fill: 'none', stroke: col, 'stroke-width': 28, transform: 'rotate(-90 90 90)', 'stroke-dasharray': `${len} ${C - len}`, 'stroke-dashoffset': -acum, class: 'g-seg', style: `--c:${C};--len:${len};--gap:${C - len};--i:${i}` }, sv('title', {}));
+        c.firstChild.textContent = lineas.join(' · '); acum += frac * C; segs.push(c); g.append(c);
+        const li = e('li', {}, e('span', { class: 'sw', style: `background:${col}` }), `${x.nombre}: ${mx(x.ventas)} (${Math.round(frac * 1000) / 10} %)`);
+        leyenda.append(li);
+        const resaltar = (on) => { segs.forEach((o) => o.classList.toggle('g-tenue', on && o !== c)); li.classList.toggle('g-sel', on); centro1.textContent = on ? x.nombre : 'Ventas'; centro2.textContent = on ? mx(x.ventas).replace(/\.00$/, '') : mx(tot).replace(/\.00$/, ''); };
+        conGlobo(c, w, lineas, resaltar); li.addEventListener('mouseenter', () => resaltar(true)); li.addEventListener('mouseleave', () => resaltar(false));
       });
-      const leyenda = e('ul', { class: 'leyenda' }, ...top.map((x, i) => e('li', {}, e('span', { class: 'sw', style: `background:${COL[i % COL.length]}` }), `${x.nombre}: ${mx(x.ventas)} (${Math.round(x.ventas / tot * 1000) / 10} %)`)));
-      return e('div', { class: 'pastel-w' }, g, leyenda);
+      g.append(centro1, centro2);
+      return w;
+    }
+    // Barras horizontales (por ejemplo, pedidos por estatus)
+    function graficaBarrasH(items, formato) {
+      const W = 560, fila = 38, T = 8, L = 150, R = 56, Hh = T + fila * items.length + 24, max = Math.max(1, ...items.map((x) => x.valor)), ancho = W - L - R;
+      const g = sv('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': 'Gráfica de barras horizontales', class: 'grafica' }), w = envolver(g);
+      [0, 0.5, 1].forEach((f) => g.append(sv('line', { x1: L + ancho * f, x2: L + ancho * f, y1: T, y2: T + fila * items.length, stroke: '#E3D5C0', 'stroke-width': 1 }), txt({ x: L + ancho * f, y: Hh - 6, 'text-anchor': 'middle', 'font-size': 11, fill: '#3F210E' }, formato(max * f))));
+      items.forEach((x, i) => {
+        const y = T + fila * i + 7, ww = Math.max(x.valor / max * ancho, x.valor > 0 ? 3 : 0);
+        g.append(txt({ x: L - 10, y: y + 15, 'text-anchor': 'end', 'font-size': 12, fill: '#3F210E' }, x.nombre));
+        const b = sv('rect', { x: L, y, width: ww, height: 22, rx: 5, fill: x.color, class: 'g-barra', style: `animation-delay:${i * 0.12}s`, tabindex: 0 }, sv('title', {}));
+        b.firstChild.textContent = `${x.nombre}: ${formato(x.valor)}`;
+        g.append(b, txt({ x: L + ww + 8, y: y + 16, 'font-size': 12, 'font-weight': 700, fill: '#3F210E', class: 'g-val', style: `animation-delay:${0.5 + i * 0.12}s` }, formato(x.valor)));
+        conGlobo(b, w, [x.nombre, formato(x.valor)], (on) => b.classList.toggle('g-sel', on));
+      });
+      return w;
     }
     const sel = H.menuPeriodo({ inicial: 'hoy', etiqueta: 'Periodo de ventas' }, () => cargarVentas());
     const contenido = e('div');
@@ -72,15 +116,12 @@
         contenido.replaceChildren(
           e('p', { class: 'mu' }, `Del ${fd(v.desde)} al ${fd(v.hasta)} · cifras en pesos mexicanos (MXN)`),
           e('div', { class: 'kp', 'data-ventas-periodo': '1' }, kp('Ingresos totales', mx(v.ventas)), kp('Pedidos', String(v.pedidos)), kp('Gastos totales', mx(v.gastos), v.gastos ? '#B3261E' : ''), kp('Utilidad bruta', mx(v.utilidad), v.utilidad < 0 ? '#B3261E' : '#3E5B3A'), kp('Utilidad neta', mx(v.utilidad_neta), v.utilidad_neta < 0 ? '#B3261E' : '#3E5B3A'), kp('Margen', v.margen_neto_pct + ' %', v.margen_neto_pct < 0 ? '#B3261E' : '')),
-          e('p', { class: 'mu' }, 'Ingresos totales = ventas. Gastos totales = compras a proveedores. Utilidad bruta = ventas − costo de los insumos usados. Utilidad neta = ingresos − gastos totales. Margen = utilidad neta ÷ ingresos.'),
-          e('div', { class: 'graficas' }, e('div', {}, e('h4', {}, 'Ventas por periodo (barras)'), graficaBarras(v.serie, v.unidad)), e('div', {}, e('h4', {}, 'Ventas por combo (pastel)'), graficaPastel(v.combos))),
-          v.gastos_detalle && v.gastos_detalle.length ? e('p', { class: 'mu', 'data-gastos': '1' }, 'Compras a proveedores: ' + v.gastos_detalle.map((g) => `${g.folio} ${g.proveedor} ${mx(g.total)}`).join(' · ')) : null,
+          e('div', { class: 'graficas' }, e('div', {}, e('h4', {}, 'Ventas a lo largo del periodo'), graficaLinea(v.serie, v.unidad)), e('div', {}, e('h4', {}, 'Ventas por combo'), graficaDona(v.combos))),
           v.serie.length ? e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, e('th', {}, v.unidad === 'hour' ? 'Hora' : 'Periodo'), e('th', { class: 'n' }, 'Pedidos'), e('th', { class: 'n' }, 'Ventas'), e('th', {}, ''))),
             e('tbody', {}, ...v.serie.map((x) => e('tr', {}, e('td', {}, etq(x.periodo, v.unidad)), e('td', { class: 'n' }, String(x.pedidos)), mon(e, x.ventas),
               e('td', { style: 'width:30%' }, e('span', { style: `display:block;height:8px;border-radius:4px;background:var(--pri);width:${Math.max(2, Math.round(x.ventas / max * 100))}%` })))),
               e('tr', { class: 'total' }, e('td', {}, 'Suma'), e('td', { class: 'n' }, String(v.pedidos)), mon(e, v.ventas), e('td', {}))))
-            : e('p', { class: 'mu' }, 'No hay ventas en este periodo.'),
-          v.combos.length ? e('p', { class: 'mu' }, 'Por combo: ' + v.combos.map((x) => `${x.nombre} ${mx(x.ventas)} (${x.pedidos})`).join(' · ')) : null);
+            : e('p', { class: 'mu' }, 'No hay ventas en este periodo.'));
       } catch (er) { if (mi === seqV) contenido.replaceChildren(e('p', { class: 'err' }, er.message)); }
     }
     async function cargar() {
@@ -95,8 +136,6 @@
       const ST = { Pendiente: '#6A6141', 'En preparación': '#3F210E', 'Listo para entrega': '#3E5B3A', Entregado: '#7D756B' };
       const total = d.ventas_7_dias.reduce((a, x) => ({ p: a.p + x.pedidos, v: a.v + x.ventas }), { p: 0, v: 0 });
       raiz.replaceChildren(
-        e('div', { class: 'kp' }, kp('Ventas de hoy', mx(d.ventas_hoy)), kp('Pedidos de hoy', String(d.pedidos_hoy)), kp('Entregas pendientes hoy', String(d.entregas_pendientes_hoy), d.entregas_pendientes_hoy ? '#6A6141' : ''),
-          kp('Insumos en reorden', String(d.insumos_en_reorden), d.insumos_en_reorden ? '#B3261E' : ''), kp('Pedidos a proveedor por recibir', String(d.pedidos_proveedor_por_recibir || 0)), kp('Gastos de hoy (compras)', mx(d.gastos_hoy || 0), d.gastos_hoy ? '#B3261E' : ''), kp('Solicitudes por aprobar', String(d.solicitudes_pendientes || 0), d.solicitudes_pendientes ? '#6A6141' : '')),
         (() => {
           const vt = Number(d.ventas_hoy || 0), cp = Number(d.gastos_hoy || 0), gan = Math.round((vt - cp) * 100) / 100;
           return e('section', { class: 'card ganancia', 'data-ganancias': '1' }, e('h3', {}, 'Ganancias del día'),
@@ -104,7 +143,7 @@
               e('div', { class: 'card' }, e('small', { class: 'mu' }, 'Ganancia total del día (ventas − compras)'), e('b', { 'data-ganancia-total': '1', style: 'color:' + (gan < 0 ? '#B3261E' : '#3E5B3A') }, mx(gan)))));
         })(),
         panelV,
-        e('div', { class: 'card' }, e('h3', {}, 'Pedidos por estatus'), e('div', { class: 'row', style: 'margin:0' }, ...Object.entries(d.por_estatus).map(([k, v]) => e('span', {}, chipC(k, ST[k]), ` ${v}`)))),
+        e('div', { class: 'card' }, e('h3', {}, 'Pedidos por estatus'), graficaBarrasH(Object.entries(d.por_estatus).map(([k, v]) => ({ nombre: k, valor: v, color: ST[k] || '#7D756B' })), (n) => String(Math.round(n)))),
         d.pagos_en_revision ? e('div', { class: 'alerta', role: 'alert' }, e('b', {}, `⚠ ${d.pagos_en_revision} pago(s) cobrado(s) sin pedido: requieren reembolso o atención manual desde el panel de la pasarela de pago.`),
           ...d.pagos_revision.map((x) => e('div', {}, `${x.cliente} · ${mx(x.total)} · ${x.proveedor} · ref. ${x.referencia || '—'} · ${new Date(x.creado_en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}`))) : null,
         fallos.length ? e('div', { class: 'alerta', role: 'alert' }, e('b', {}, `⚠ ${fallos.length} aviso(s) por correo no se han podido enviar`),

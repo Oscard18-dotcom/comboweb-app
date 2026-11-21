@@ -325,7 +325,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     pest(w, 'Dashboard').click();
     const logoR = await fetch(B + '/logo.png'); const logoFav = await fetch(B + '/favicon.png');
     t('logotipo: header con imagen, login con logo grande y archivos servidos como PNG', !!$('header .marca img') && $('header .marca img').getAttribute('src') === 'logo-96.png' && logoR.status === 200 && /image\/png/.test(logoR.headers.get('content-type')) && logoFav.status === 200 && !!w.document.querySelector('link[rel=icon]'));
-    t('dashboard: muestra "Pedidos a proveedor por recibir"', await until(() => /Pedidos a proveedor por recibir/.test($('#staff').textContent)));
+    t('dashboard: sin las tarjetas sueltas, sin los textos explicativos y con gráficas animadas (línea, dona y barras)', await until(() => !/Pedidos a proveedor por recibir|Entregas pendientes hoy|Solicitudes por aprobar|Gastos de hoy \(compras\)/.test($('#staff').textContent) && !/Ingresos totales = ventas|Compras a proveedores: PP|Por combo:/.test($('#staff').textContent) && $('#staff svg.grafica') && $('#staff .g-barra') && /Ganancias del día/.test($('#staff').textContent)));
     const harinaId = (await db.query("SELECT id FROM insumos WHERE nombre='Harina'")).rows[0].id;
     const stockH = async () => Number((await db.query('SELECT stock FROM insumos WHERE id=$1', [harinaId])).rows[0].stock);
     const sub = (txt) => [...w.document.querySelectorAll('#staff .seg button')].find((b) => b.textContent === txt && b.dataset.s);
@@ -424,15 +424,16 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     botonF(`ui6staff${R}`, 'Restablecer contraseña').click();
     form = $('#staff form'); form.querySelector('input').value = 'Restablecida-UI6-1'; enviarForm(w, form);
     t('usuarios: restablecer contraseña (la anterior deja de servir)', await until(() => /restablecida/.test($('#staff .okmsg').textContent)) && await loginApi(`ui6staff${R}@prueba.test`, 'Restablecida-UI6-1') === 200 && await loginApi(`ui6staff${R}@prueba.test`, 'Temporal-UI6-99') === 401);
-    botonF(`ui6staff${R}`, 'Dar de baja').click(); [...w.document.querySelectorAll('#staff button')].find((b) => b.textContent === 'Sí, dar de baja').click();
-    t('usuarios: dar de baja (ya no puede entrar)', await until(() => /Inactivo/.test(filaT(`ui6staff${R}`).textContent)) && await loginApi(`ui6staff${R}@prueba.test`, 'Restablecida-UI6-1') === 401);
-    botonF('admin@encombo.test', 'Dar de baja').click(); [...w.document.querySelectorAll('#staff button')].find((b) => b.textContent === 'Sí, dar de baja').click();
-    t('usuarios: no se puede dar de baja al único administrador', await until(() => /sin un administrador activo/.test($('#staff').textContent)));
+    t('usuarios: ya no existe el botón "Dar de baja"', ![...w.document.querySelectorAll('#staff button')].some((b) => b.textContent === 'Dar de baja'));
+    t('usuarios: "Editar correo" solo aparece en cocina y almacén (no en admin ni clientes)', [...w.document.querySelectorAll('#staff tbody tr')].every((tr) => { const rol = tr.querySelector('select').value; return !!tr.querySelector('[data-editar-correo]') === (rol === 'cocina' || rol === 'almacen'); }));
+    botonF(`ui6staff${R}`, 'Editar correo').click();
+    { const fc = await until(() => $('#staff form')); cambiar(w, fc.querySelector('input[type=email]'), `ui6staff${R}-nuevo@prueba.test`); enviarForm(w, fc); }
+    t('usuarios: el admin cambia el correo de una cuenta de almacén (el viejo deja de servir)', await until(async () => (await db.query('SELECT 1 FROM usuarios WHERE correo=$1', [`ui6staff${R}-nuevo@prueba.test`])).rows.length === 1) && await loginApi(`ui6staff${R}-nuevo@prueba.test`, 'Restablecida-UI6-1') === 200 && await loginApi(`ui6staff${R}@prueba.test`, 'Restablecida-UI6-1') === 401);
     const chkCli = w.document.querySelector('#staff .chk input'); chkCli.checked = true; chkCli.dispatchEvent(new w.Event('change'));
     t('usuarios: "ver también clientes" los muestra', /ui\d+@prueba\.test/.test($('#staff').textContent));
     t('usuarios: solo cocina y almacén tienen botón Eliminar (admin y clientes no)', [...w.document.querySelectorAll('#staff tbody tr')].every((tr) => { const rol = tr.querySelector('select').value; return /Eliminar/.test(tr.textContent) === (rol === 'cocina' || rol === 'almacen'); }));
     botonF(`ui6staff${R}`, 'Eliminar').click(); [...w.document.querySelectorAll('#staff button')].find((b) => b.textContent === 'Sí, eliminar cuenta').click();
-    t('usuarios: eliminar una cuenta de almacén la borra de la base', await until(async () => (await db.query('SELECT 1 FROM usuarios WHERE correo=$1', [`ui6staff${R}@prueba.test`])).rows.length === 0));
+    t('usuarios: eliminar una cuenta de almacén la borra de la base', await until(async () => (await db.query('SELECT 1 FROM usuarios WHERE correo=$1', [`ui6staff${R}-nuevo@prueba.test`])).rows.length === 0));
     w.document.querySelector('#btn-cuenta').click();
     t('mi cuenta (admin): pantalla aparte con correo y contraseña, sin nombre ni tarjetas ni eliminar', await until(() => !w.document.querySelector('#cuenta').hidden && w.document.querySelector('#staff').hidden && w.document.querySelector('#cuenta form[data-form=datos]') && w.document.querySelector('#cuenta form[data-form=password]'))
       && !w.document.querySelector('#cuenta input[name=nombre]') && !w.document.querySelector('[data-agregar-tarjeta]') && !w.document.querySelector('[data-eliminar-cuenta]') && /Volver al panel/.test(w.document.querySelector('[data-volver-cuenta]').textContent));

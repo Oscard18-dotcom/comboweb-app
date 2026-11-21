@@ -165,10 +165,29 @@ main .mu,main small,main h3,main dt{color:var(--tx2)}
 
 .mini.peligro-s{color:#B3261E;border-color:#B3261E}
 .grafica{width:100%;height:auto;max-width:620px;display:block}
-.grafica.pastel{max-width:200px}
+.grafica.dona{max-width:200px}
 .pastel-w{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
 .leyenda{list-style:none;margin:0;padding:0;color:#3F210E;font-size:.9rem}
 .leyenda li{margin:4px 0;display:flex;align-items:center;gap:8px}
 .leyenda .sw{display:inline-block;width:14px;height:14px;border-radius:3px;flex:none}
 .graficas h4{margin:6px 0;color:#3F210E}
 .graficas{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:12px}
+/* ---- Gráficas animadas ---- */
+.chart-w{position:relative}
+.chart-tip{position:absolute;z-index:5;pointer-events:none;background:#3F210E;color:#F9F1E6;border-radius:8px;padding:6px 10px;font-size:.82rem;line-height:1.35;display:flex;flex-direction:column;box-shadow:0 4px 14px rgba(63,33,14,.3);white-space:nowrap}
+.chart-tip[hidden]{display:none}
+.g-linea{stroke-dasharray:1;stroke-dashoffset:1;animation:g-trazo 1.3s ease-out .1s forwards}
+.g-area{opacity:0;animation:g-aparece .9s ease-out .7s forwards}
+.g-punto{opacity:0;animation:g-aparece .4s ease-out forwards;cursor:pointer;transition:r .15s}
+.g-seg{stroke-dasharray:0 var(--c);animation:g-dona .8s cubic-bezier(.3,.7,.3,1) forwards;animation-delay:calc(var(--i)*.14s);cursor:pointer;transition:opacity .2s}
+.g-tenue{opacity:.35}
+.g-barra{transform-box:fill-box;transform-origin:left center;transform:scaleX(0);animation:g-crece .8s cubic-bezier(.3,.7,.3,1) forwards;cursor:pointer;transition:filter .2s}
+.g-barra.g-sel{filter:brightness(1.25)}
+.g-val{opacity:0;animation:g-aparece .4s ease-out forwards}
+.leyenda li{padding:2px 6px;border-radius:6px;transition:background .2s;cursor:default}
+.leyenda li.g-sel{background:#EEE4D0}
+@keyframes g-trazo{to{stroke-dashoffset:0}}
+@keyframes g-aparece{to{opacity:1}}
+@keyframes g-dona{to{stroke-dasharray:var(--len) var(--gap)}}
+@keyframes g-crece{to{transform:scaleX(1)}}
+@media (prefers-reduced-motion:reduce){.g-linea,.g-area,.g-punto,.g-seg,.g-barra,.g-val{animation-duration:.01s;animation-delay:0s}}

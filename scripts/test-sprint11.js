@@ -266,6 +266,21 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
       const ct = await call('POST', '/api/pedidos-proveedor/cotizar', { proveedor_id: pr.j.proveedor.id, items: [{ insumo_id: harina, cantidad: 2500 }] }, admin);
       t('cotización: 2,500 g × $85.55/kg = $213.88 usando el precio del proveedor', ct.s === 200 && ct.j.total === 213.88, JSON.stringify(ct.j).slice(0, 150));
     }
+
+    // ---------- 10) El admin edita el correo de cocina/almacén (no de otro admin ni de clientes) ----------
+    {
+      const hash = (await q("SELECT password_hash h FROM usuarios WHERE correo='cocina@encombo.test'"))[0].h;
+      const mk = async (rol, n) => (await q('INSERT INTO usuarios(nombre,correo,password_hash,rol) VALUES($1,$2,$3,$4) RETURNING id', ['Prueba ' + n, `mc-${n}-${R}@prueba.test`, hash, rol]))[0].id;
+      const idCo = await mk('cocina', 'co'), idAl = await mk('almacen', 'al'), idAd = await mk('admin', 'ad'), idCl = await mk('cliente', 'cl');
+      const patch = (id, correo, tok) => call('PATCH', `/api/admin/usuarios/${id}/correo`, { correo }, tok);
+      t('correo: cocina y almacén no pueden usar el endpoint', (await patch(idCo, 'x@prueba.test', cocina)).s === 403 && (await patch(idCo, 'x@prueba.test', almacen)).s === 403);
+      t('correo: no se cambia el de otro administrador ni el de un cliente', (await patch(idAd, `n-ad-${R}@prueba.test`, admin)).s === 403 && (await patch(idCl, `n-cl-${R}@prueba.test`, admin)).s === 403 && (await q('SELECT count(*)::int n FROM usuarios WHERE id = ANY($1) AND correo LIKE $2', [[idAd, idCl], 'mc-%']))[0].n === 2);
+      t('correo: un correo inválido o repetido se rechaza', (await patch(idCo, 'no-es-correo', admin)).s === 400 && (await patch(idCo, 'admin@encombo.test', admin)).s === 409);
+      const tokCo = (await call('POST', '/api/auth/login', { correo: `mc-co-${R}@prueba.test`, password: process.env.SEED_PASSWORD })).j.token;
+      t('correo: el admin cambia el de cocina/almacén y sus sesiones se cierran', (await patch(idCo, `mc-co2-${R}@prueba.test`, admin)).s === 200 && (await patch(idAl, `mc-al2-${R}@prueba.test`, admin)).s === 200
+        && (await call('GET', '/api/auth/me', undefined, tokCo)).s === 401 && (await call('POST', '/api/auth/login', { correo: `mc-co2-${R}@prueba.test`, password: process.env.SEED_PASSWORD })).s === 200);
+      await db.query('DELETE FROM usuarios WHERE id = ANY($1)', [[idCo, idAl, idAd, idCl]]);
+    }
   } catch (e) { fail++; console.log('FAIL excepción', e.stack || e); }
   finally {
     try {

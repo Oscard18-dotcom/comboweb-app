@@ -30,7 +30,7 @@
         e('tbody', {}, filas.map((u) => {
           const sel = e('select', { 'aria-label': `Rol de ${u.nombre}`, onchange: (ev) => cambiarRol(u, ev.target.value, ev.target) }, ...['cocina', 'almacen', 'admin', 'cliente'].map((r) => e('option', { value: r, selected: u.rol === r }, ROL[r])));
           return e('tr', {}, e('td', {}, u.nombre + (u.id === yo ? ' (tú)' : '')), e('td', {}, u.correo), e('td', {}, sel), e('td', {}, u.activo ? chipC('Activo', '#3E5B3A') : chipC('Inactivo', '#7D756B')),
-            e('td', { class: 'acc' }, e('button', { class: 'mini', type: 'button', onclick: () => confirmarEstado(u) }, u.activo ? 'Dar de baja' : 'Reactivar'), e('button', { class: 'mini', type: 'button', onclick: () => formClave(u) }, 'Restablecer contraseña'),
+            e('td', { class: 'acc' }, u.activo ? null : e('button', { class: 'mini', type: 'button', onclick: () => confirmarEstado(u) }, 'Reactivar'), ['cocina', 'almacen'].includes(u.rol) ? e('button', { class: 'mini', type: 'button', 'data-editar-correo': u.id, onclick: () => formCorreo(u) }, 'Editar correo') : null, e('button', { class: 'mini', type: 'button', onclick: () => formClave(u) }, 'Restablecer contraseña'),
               ['cocina', 'almacen'].includes(u.rol) ? e('button', { class: 'mini peligro-s', type: 'button', 'aria-label': `Eliminar la cuenta de ${u.nombre}`, onclick: () => confirmarEliminar(u) }, 'Eliminar') : null));
         }))), filas.length ? null : e('p', { class: 'mu', style: 'padding:8px' }, 'No hay usuarios que coincidan.'));
     }
@@ -57,6 +57,14 @@
         catch (x) { er.replaceChildren(e('div', {}, x.message)); si.disabled = false; }
       } }, 'Sí, eliminar cuenta');
       panel.replaceChildren(e('div', { class: 'card' }, e('h3', {}, `¿Eliminar la cuenta de ${u.nombre}?`), e('p', {}, `Es una cuenta de ${ROL[u.rol]}. Se borra de forma definitiva y ya no podrá iniciar sesión. El historial de movimientos se conserva sin su nombre. Esta acción no se puede deshacer.`), er, e('div', { class: 'row' }, si, cerrar)));
+    }
+    function formCorreo(u) {
+      const c = e('input', { type: 'email', value: u.correo, required: true, maxlength: 120, 'aria-label': `Correo de ${u.nombre}` }), er = caja(), b = e('button', { class: 'btn', type: 'submit' }, 'Guardar correo');
+      const f = e('form', { onsubmit: enviar(b, er, async () => {
+        await api(`/admin/usuarios/${u.id}/correo`, { method: 'PATCH', body: { correo: c.value } });
+        await cargar(); panel.replaceChildren(e('div', { class: 'card' }, ok(`El correo de ${u.nombre} ahora es ${c.value.trim().toLowerCase()}.`), e('p', { class: 'mu' }, 'Se cerraron sus sesiones: deberá entrar con el correo nuevo.'), cerrar));
+      }) }, campo('Correo', c), er, b);
+      panel.replaceChildren(e('div', { class: 'card' }, e('h3', {}, `Editar correo · ${u.nombre}`), f, cerrar));
     }
     function formClave(u) {
       const c = e('input', { type: 'text', value: generar(), autocomplete: 'off', 'aria-label': 'Contraseña temporal', required: true }), er = caja(), b = e('button', { class: 'btn', type: 'submit' }, 'Restablecer contraseña');
