@@ -28,7 +28,7 @@ async function horarios(q, fecha) {
 }
 
 /* ---------- Insumos que consume un combo ---------- */
-async function requeridos(q, items) {
+async function requeridos(q, items, comboClave) {
   const ids = [...items.keys()], cants = ids.map((i) => items.get(i));
   // Consumo por pieza = cantidad de la receta / rinde. Se suma y se redondea hacia arriba a 4 decimales, todo en SQL (numérico exacto)
   const { rows } = await q.query(
@@ -39,6 +39,15 @@ async function requeridos(q, items) {
       GROUP BY ri.insumo_id`, [ids, cants]);
   const conReceta = new Set((await q.query('SELECT producto_id FROM recetas WHERE producto_id = ANY($1)', [ids])).rows.map((r) => r.producto_id));
   const reqs = new Map(rows.map((r) => [r.insumo_id, Number(r.total)]));
+  // Cada combo que se pide lleva una caja: se descuenta 1 «Caja» por combo (un combo personalizado = 1 caja)
+  if (comboClave !== undefined) {
+    const caja = (await q.query("SELECT id FROM insumos WHERE nombre='Caja' AND activo")).rows[0];
+    if (caja) {
+      const combo = await combosSvc.porClave(q, comboClave);
+      const k = combo && combo.items.length ? (combosSvc.multiplo(combo, items) || 1) : 1;
+      reqs.set(caja.id, (reqs.get(caja.id) || 0) + k);
+    }
+  }
   return { reqs, sinReceta: ids.filter((i) => !conReceta.has(i)) };
 }
 
@@ -120,7 +129,7 @@ async function validar(q, b = {}) {
       const totalC = lineas.reduce((a, l) => a + cents(l.precio_unitario) * l.cantidad, 0);
       detalle = { lineas, combo: comboElegido ? { clave: comboElegido.clave, nombre: comboElegido.nombre } : null,
         total: totalC / 100, fecha: b.fecha, hora: b.hora, dedicatoria };
-      const { reqs, sinReceta } = await requeridos(q, items);
+      const { reqs, sinReceta } = await requeridos(q, items, comboElegido ? comboElegido.clave : 'personalizado');
       if (sinReceta.length) err('items', 'producto_sin_receta', 'Alguno de los productos no se puede preparar por ahora.');
       else errores.push(...(await chequear(q, reqs, fechaOk && horaOk ? b.fecha : null, b.hora)));
     }
@@ -172,7 +181,7 @@ async function confirmarPago(checkoutId, { proveedor, referencia, monto, moneda 
     // Bloqueos para que dos pagos simultáneos no usen el mismo stock ni el mismo horario
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`slot ${p.fecha} ${p.hora}`]);
     const items = new Map(p.items.map((i) => [i.producto_id, i.cantidad]));
-    const { reqs } = await requeridos(c, items);
+    const { reqs } = await requeridos(c, items, p.combo || 'personalizado');
     await c.query('SELECT id FROM insumos WHERE id = ANY($1) ORDER BY id FOR UPDATE', [[...reqs.keys()]]);
     const faltas = await chequear(c, reqs, p.fecha, p.hora);
     if (faltas.length) return aRevision(faltas[0].codigo);

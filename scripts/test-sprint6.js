@@ -163,11 +163,11 @@ const concreta = (p) => p.replace('/checkout/:id', '/checkout/00000000-0000-4000
       const ck = await call('POST', '/api/pedidos/checkout', combo({ items: [{ producto_id: P('Galleta'), cantidad: 1 }], fecha: dia(1 + i), hora: '10:00' }), C.token);
       return ck.s === 201 ? call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, C.token) : ck;
     };
-    const harinaAntesCompras = Number((await q("SELECT stock FROM insumos WHERE nombre='Harina'"))[0].stock), cajaAntesCompras = Number((await q("SELECT stock FROM insumos WHERE nombre='Caja mediana'"))[0].stock);
+    const harinaAntesCompras = Number((await q("SELECT stock FROM insumos WHERE nombre='Harina'"))[0].stock), cajaAntesCompras = Number((await q("SELECT stock FROM insumos WHERE nombre='Caja'"))[0].stock);
     const compras = await Promise.all(Array.from({ length: 14 }, (_, i) => comprar(i)));
     t('14 compras simultáneas (14 fechas distintas) terminan todas en pedido pagado, sin bloqueos', compras.every((x) => x.j.estado === 'pagado'), JSON.stringify(compras.map((x) => x.s + ':' + (x.j.estado || x.j.error)).slice(0, 4)));
-    const harinaDespues = Number((await q("SELECT stock FROM insumos WHERE nombre='Harina'"))[0].stock), cajaDespues = Number((await q("SELECT stock FROM insumos WHERE nombre='Caja mediana'"))[0].stock);
-    t('…y el inventario cuadra exactamente (14 galletas = 420 g de harina y ya no se descuentan cajas)', Math.abs((harinaAntesCompras - harinaDespues) - 420) < 1e-6 && Math.abs(cajaAntesCompras - cajaDespues) < 1e-6, `${harinaAntesCompras - harinaDespues}`);
+    const harinaDespues = Number((await q("SELECT stock FROM insumos WHERE nombre='Harina'"))[0].stock), cajaDespues = Number((await q("SELECT stock FROM insumos WHERE nombre='Caja'"))[0].stock);
+    t('…y el inventario cuadra exactamente (14 galletas = 420 g de harina y 14 cajas, una por combo)', Math.abs((harinaAntesCompras - harinaDespues) - 420) < 1e-6 && Math.abs((cajaAntesCompras - cajaDespues) - 14) < 1e-6, `${harinaAntesCompras - harinaDespues}`);
     const harina = (await q("SELECT id,stock FROM insumos WHERE nombre='Harina'"))[0];
     await Promise.all(Array.from({ length: 40 }, () => call('POST', `/api/inventario/${harina.id}/movimientos`, { tipo: 'entrada', cantidad: 1 }, almacen)));
     const h2 = Number((await q('SELECT stock FROM insumos WHERE id=$1', [harina.id]))[0].stock);

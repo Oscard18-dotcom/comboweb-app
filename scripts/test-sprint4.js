@@ -85,7 +85,7 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
 
     // Eliminar (HU07): avisar si está en recetas
     r = await call('DELETE', `/api/inventario/${harina.id}`, undefined, almacen); t('eliminar insumo usado en recetas → 409 y dice en cuáles', r.s === 409 && /Cupcake/.test(r.j.error) && /Brownie/.test(r.j.error), r.j.error);
-    const caja = await porNombre('Caja mediana'); r = await call('DELETE', `/api/inventario/${caja.id}`, undefined, almacen); t('eliminar un insumo usado en una presentación → 409', r.s === 409 && /presentación/.test(r.j.error));
+    const caja = await porNombre('Caja'); r = await call('DELETE', `/api/inventario/${caja.id}`, undefined, almacen); t('eliminar un insumo usado en una presentación → 409', r.s === 409 && /presentación/.test(r.j.error));
     r = await call('PUT', `/api/inventario/${harina.id}`, { activo: false }, almacen); t('archivar un insumo usado en recetas → 409', r.s === 409);
     r = await call('PUT', `/api/inventario/${harina.id}`, { unidad: 'kg' }, almacen); t('cambiar la unidad de un insumo usado en recetas → 409', r.s === 409);
     r = await call('POST', '/api/inventario', { nombre: `Test4 Nuevo ${R}`, unidad: 'pza' }, almacen); const idN = r.j.insumo.id;

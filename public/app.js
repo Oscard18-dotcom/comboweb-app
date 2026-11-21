@@ -449,7 +449,7 @@ async function renderCuenta() {
   const volver = (txt) => el('button', { class: 'btn s', type: 'button', 'data-volver-cuenta': '1', onclick: volverDeCuenta }, txt);
   const txtVolver = esCliente ? '← Volver a hacer un nuevo pedido' : '← Volver al panel';
   const partes = [el('div', { class: 'row' }, volver(txtVolver)), el('h2', {}, 'Mi cuenta')];
-  if (esCliente) partes.push(el('p', { class: 'mu' }, `Aquí puedes consultar y modificar tus datos, tal como lo describe el punto 6 del `, el('a', { href: 'privacidad.html', target: '_blank', rel: 'noopener' }, 'Aviso de privacidad'), '.'), el('h3', {}, 'Mis datos'), fd);
+  if (esCliente) partes.push(el('h3', {}, 'Mis datos'), fd);
   else {
     partes.push(el('p', { class: 'mu' }, `${perfil.nombre} · ${ROL[user.rol]}`));
     if (esAdmin) partes.push(el('h3', {}, 'Correo de la cuenta'), fd);

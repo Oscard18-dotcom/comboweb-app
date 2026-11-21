@@ -77,7 +77,7 @@ const hay = (r, codigo) => (r.j.errores || []).some((e) => e.codigo === codigo);
     r = await call('POST', '/api/pedidos/checkout', combo({ hora: '03:00' }), tA); t('checkout con datos inválidos → 422 con mensaje', r.s === 422 && r.j.error);
 
     /* ----- Flujo completo con pago simulado ----- */
-    const antes = {}; for (const n of ['Harina', 'Azúcar', 'Mantequilla', 'Café molido', 'Leche', 'Caja mediana']) antes[n] = await stock(n);
+    const antes = {}; for (const n of ['Harina', 'Azúcar', 'Mantequilla', 'Café molido', 'Leche', 'Caja']) antes[n] = await stock(n);
     r = await nuevoCheckout(tA);
     t('checkout creado con enlace de pago', r.s === 201 && r.j.checkout_id && r.j.url.includes('pago-simulado'));
     const ck1 = r.j.checkout_id;
@@ -87,8 +87,8 @@ const hay = (r, codigo) => (r.j.errores || []).some((e) => e.codigo === codigo);
     r = await aprobar(ck1, tA); t('pago aprobado → pedido creado', r.s === 200 && r.j.estado === 'pagado' && r.j.pedido_id);
     const pid1 = r.j.pedido_id;
     t('inventario descontado exactamente', (await stock('Harina')) === antes.Harina - 240 && (await stock('Azúcar')) === antes['Azúcar'] - 180 && (await stock('Mantequilla')) === antes.Mantequilla - 120
-      && (await stock('Café molido')) === antes['Café molido'] - 36 && (await stock('Leche')) === antes.Leche - 400 && (await stock('Caja mediana')) === antes['Caja mediana']);
-    t('se registran 5 movimientos de salida ligados al pedido (ya no hay caja)', (await q('SELECT count(*)::int n FROM movimientos_inventario WHERE pedido_id=$1 AND tipo=\'salida\'', [pid1]))[0].n === 5);
+      && (await stock('Café molido')) === antes['Café molido'] - 36 && (await stock('Leche')) === antes.Leche - 400 && (await stock('Caja')) === antes['Caja'] - 1);
+    t('se registran 6 movimientos de salida ligados al pedido (5 ingredientes + 1 caja)', (await q('SELECT count(*)::int n FROM movimientos_inventario WHERE pedido_id=$1 AND tipo=\'salida\'', [pid1]))[0].n === 6);
     r = await call('GET', `/api/pedidos/${pid1}`, undefined, tA); const ped = r.j.pedido;
     t('comprobante: folio, estatus Pendiente, total, entrega y dedicatoria', ped && /^EC-\d{4,}$/.test(ped.folio) && ped.estatus === 'Pendiente' && ped.total === 220 && ped.entrega.hora === '12:00' && ped.entrega.fecha === dia(0) && ped.dedicatoria === 'Feliz cumpleaños, Ana');
     t('comprobante: desglose y pago aprobado', ped.items.length === 2 && ped.presentacion === null && ped.pago.estado === 'aprobado' && !('cliente_id' in ped));

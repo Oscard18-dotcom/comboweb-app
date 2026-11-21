@@ -363,3 +363,29 @@ ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS eliminado_en TIMESTAMPTZ;
 -- Precios por kilo / litro: se guardan por gramo / ml con 6 decimales para no perder centavos (p. ej. $85.55/kg = 0.08555/g)
 ALTER TABLE proveedor_insumos ALTER COLUMN precio_unitario TYPE NUMERIC(14,6);
 ALTER TABLE pedido_proveedor_items ALTER COLUMN precio_unitario TYPE NUMERIC(14,6);
+
+-- Cajas chica / mediana / grande: ya no se usan (hay una sola "Caja"). Se eliminan definitivamente.
+-- Lo que todavía las referenciaba (presentaciones viejas, renglones de pedidos a proveedor) pasa a "Caja"; su historial de movimientos se borra.
+DO $$
+DECLARE caja_id INTEGER; r RECORD;
+BEGIN
+  SELECT id INTO caja_id FROM insumos WHERE nombre = 'Caja' AND activo;
+  IF caja_id IS NOT NULL THEN
+    UPDATE presentaciones SET insumo_id = caja_id
+      WHERE insumo_id IN (SELECT id FROM insumos WHERE nombre IN ('Caja chica','Caja mediana','Caja grande') AND NOT activo);
+    FOR r IN SELECT it.pedido_id, it.insumo_id FROM pedido_proveedor_items it JOIN insumos i ON i.id = it.insumo_id
+              WHERE i.nombre IN ('Caja chica','Caja mediana','Caja grande') AND NOT i.activo LOOP
+      IF NOT EXISTS (SELECT 1 FROM pedido_proveedor_items x WHERE x.pedido_id = r.pedido_id AND x.insumo_id = caja_id) THEN
+        UPDATE pedido_proveedor_items SET insumo_id = caja_id WHERE pedido_id = r.pedido_id AND insumo_id = r.insumo_id;
+      ELSE
+        UPDATE pedido_proveedor_items SET cantidad = cantidad + (SELECT cantidad FROM pedido_proveedor_items WHERE pedido_id = r.pedido_id AND insumo_id = r.insumo_id)
+          WHERE pedido_id = r.pedido_id AND insumo_id = caja_id;
+        DELETE FROM pedido_proveedor_items WHERE pedido_id = r.pedido_id AND insumo_id = r.insumo_id;
+      END IF;
+    END LOOP;
+    DELETE FROM movimientos_inventario WHERE insumo_id IN (SELECT id FROM insumos WHERE nombre IN ('Caja chica','Caja mediana','Caja grande') AND NOT activo);
+    DELETE FROM proveedor_insumos WHERE insumo_id IN (SELECT id FROM insumos WHERE nombre IN ('Caja chica','Caja mediana','Caja grande') AND NOT activo);
+    DELETE FROM insumos WHERE nombre IN ('Caja chica','Caja mediana','Caja grande') AND NOT activo
+      AND NOT EXISTS (SELECT 1 FROM receta_ingredientes ri WHERE ri.insumo_id = insumos.id);
+  END IF;
+END $$;

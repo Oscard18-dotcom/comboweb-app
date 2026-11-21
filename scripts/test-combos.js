@@ -65,7 +65,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     r = await cot('pequeno', [['Galleta', 1], ['Café americano', 1]], { presentacion_id: 999999 });
     t('un presentacion_id enviado se ignora (ya no existe el tamaño de caja)', r.j.ok && r.j.detalle.total === 45);
 
-    const antesCaja = Number((await q("SELECT stock FROM insumos WHERE nombre='Caja mediana'"))[0].stock);
+    const antesCaja = Number((await q("SELECT stock FROM insumos WHERE nombre='Caja'"))[0].stock);
     const pagar = async (combo, lista) => {
       const ck = await call('POST', '/api/pedidos/checkout', { combo, items: por(lista), fecha: dia(), hora: '13:00', direccion: DIR }, cli);
       const ap = await call('POST', `/api/pagos/simulado/${ck.j.checkout_id}/aprobar`, { tarjeta: { titular: 'Cliente Prueba', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' } }, cli);
@@ -74,7 +74,14 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     const idPeq = await pagar('pequeno', [['Galleta', 1], ['Café americano', 1]]);
     const idPer = await pagar('personalizado', [['Brownie', 2]]);
     t('se crearon los pedidos y el combo queda guardado', idPeq > 0 && idPer > 0 && (await q('SELECT combo FROM pedidos WHERE id=$1', [idPeq]))[0].combo === 'pequeno' && (await q('SELECT combo FROM pedidos WHERE id=$1', [idPer]))[0].combo === 'personalizado');
-    t('ya no se descuentan cajas del inventario', Number((await q("SELECT stock FROM insumos WHERE nombre='Caja mediana'"))[0].stock) === antesCaja && (await q("SELECT count(*)::int AS n FROM movimientos_inventario m JOIN insumos i ON i.id=m.insumo_id WHERE m.pedido_id=ANY($1) AND i.nombre LIKE 'Caja%'", [[idPeq, idPer]]))[0].n === 0);
+    t('se descuenta 1 caja por combo pedido (2 pedidos = 2 cajas, con su movimiento de salida)', Number((await q("SELECT stock FROM insumos WHERE nombre='Caja'"))[0].stock) === antesCaja - 2 && (await q("SELECT count(*)::int AS n FROM movimientos_inventario m JOIN insumos i ON i.id=m.insumo_id WHERE m.pedido_id=ANY($1) AND i.nombre = 'Caja' AND m.tipo='salida'", [[idPeq, idPer]]))[0].n === 2);
+    const cajaMid = Number((await q("SELECT stock FROM insumos WHERE nombre='Caja'"))[0].stock);
+    const idDos = await pagar('pequeno', [['Galleta', 2], ['Café americano', 2]]);
+    t('2 combos en un mismo pedido descuentan 2 cajas', idDos > 0 && Number((await q("SELECT stock FROM insumos WHERE nombre='Caja'"))[0].stock) === cajaMid - 2);
+    await q("UPDATE insumos SET stock=0 WHERE nombre='Caja'");
+    const ckSin = await call('POST', '/api/pedidos/checkout', { combo: 'personalizado', items: por([['Brownie', 1]]), fecha: dia(), hora: '13:00', direccion: DIR }, cli);
+    t('sin cajas en el inventario no se puede pedir un combo', ckSin.s === 409 || ckSin.s === 400 || ckSin.s === 422, JSON.stringify(ckSin.j).slice(0, 120));
+    await q("UPDATE insumos SET stock=$1 WHERE nombre='Caja'", [antesCaja - 2 - 2]);
     r = await call('GET', `/api/pedidos/${idPeq}`, undefined, cli);
     t('comprobante: muestra el combo y el total sin caja', r.j.pedido.combo.nombre === 'Combo Mini' && r.j.pedido.total === 45 && r.j.pedido.presentacion === null);
     r = await call('GET', '/api/pedidos', undefined, cli);
