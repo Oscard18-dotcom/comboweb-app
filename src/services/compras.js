@@ -79,9 +79,12 @@ async function cotizar(q, b) {
   const { rows } = await q.query('SELECT id,nombre,unidad,costo_unitario,activo FROM insumos WHERE id = ANY($1::int[])', [items.map((i) => i.id)]);
   if (rows.length !== items.length) throw err(400, 'Hay un insumo que no existe.');
   const por = new Map(rows.map((r) => [r.id, r]));
+  // Precio pactado con ese proveedor (si ya se eligió); si no lo tiene, el último costo del insumo
+  const provId = Number.parseInt((b || {}).proveedor_id, 10);
+  const delProv = new Map(Number.isInteger(provId) ? (await q.query('SELECT insumo_id,precio_unitario FROM proveedor_insumos WHERE proveedor_id=$1', [provId])).rows.map((r) => [r.insumo_id, Number(r.precio_unitario)]) : []);
   const lineas = items.map((it) => {
-    const i = por.get(it.id), precio = it.pu !== null ? it.pu : Number(i.costo_unitario);
-    return { insumo_id: it.id, nombre: i.nombre, unidad: i.unidad, cantidad: it.cant, precio_unitario: precio, subtotal: r2(it.cant * precio), activo: i.activo, origen: it.pu !== null ? 'capturado' : 'costo_vigente' };
+    const i = por.get(it.id), pProv = delProv.get(it.id), precio = it.pu !== null ? it.pu : pProv !== undefined ? pProv : Number(i.costo_unitario);
+    return { insumo_id: it.id, nombre: i.nombre, unidad: i.unidad, cantidad: it.cant, precio_unitario: precio, subtotal: r2(it.cant * precio), activo: i.activo, origen: it.pu !== null ? 'capturado' : pProv !== undefined ? 'proveedor' : 'costo_vigente' };
   });
   return { items: lineas, total: r2(lineas.reduce((a, l) => a + l.subtotal, 0)) };
 }
@@ -108,7 +111,7 @@ async function crear(user, b) {
     const prov = (await c.query('SELECT id,activo FROM proveedores WHERE id=$1', [provId])).rows[0];
     if (!prov) throw err(404, 'Proveedor no encontrado.');
     if (!prov.activo) throw err(409, 'Ese proveedor está archivado. Reactívalo para pedirle.');
-    const cot = await cotizar(c, { items: items.map((i) => ({ insumo_id: i.id, cantidad: i.cant, precio_unitario: i.pu })) });
+    const cot = await cotizar(c, { proveedor_id: provId, items: items.map((i) => ({ insumo_id: i.id, cantidad: i.cant, precio_unitario: i.pu })) });
     if (cot.items.some((i) => !i.activo)) throw err(409, 'Hay un insumo archivado en el pedido.');
     // Almacén NO compra: hace una solicitud que el administrador debe aprobar. El administrador compra directo.
     const solicitud = user.rol === 'almacen';

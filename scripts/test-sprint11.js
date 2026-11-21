@@ -1,5 +1,6 @@
 // Sprint 11: periodos en reportes/dashboard, caja única, cotización y gastos, solicitudes de Almacén,
 // ticket de compra y Aviso de privacidad.   npm run db:init && npm run test:sprint11
+process.env.AUTH_RATE_LIMIT = '100000'; // el límite real se prueba en el sprint 6
 const app = require('../src/app');
 const db = require('../src/db');
 const svc = require('../src/services/pedidos');
@@ -142,15 +143,96 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     }
     t('almacén y cliente no pueden pedir el ticket → 403', (await call('GET', `/api/cocina/pedidos/${ped}/ticket`, undefined, almacen)).s === 403 && (await call('GET', `/api/cocina/pedidos/${ped}/ticket`, undefined, cli)).s === 403);
     t('ticket de un pedido inexistente → 404', (await call('GET', '/api/cocina/pedidos/99999999/ticket', undefined, cocina)).s === 404);
+
+    // ---------- 7) Costo unitario por proveedor ----------
+    const harina2 = (await q("SELECT id,costo_unitario FROM insumos WHERE nombre='Harina'"))[0], leche = (await q("SELECT id,costo_unitario FROM insumos WHERE nombre='Leche'"))[0];
+    r = await call('POST', '/api/proveedores', { nombre: `Sin costo ${R}`, correo: `sc${R}@prov.test`, insumos: [{ id: harina2.id }] }, admin);
+    t('proveedor: marcar un insumo sin costo unitario → 400', r.s === 400 && /costo unitario/i.test(r.j.error));
+    r = await call('POST', '/api/proveedores', { nombre: `Costo cero ${R}`, correo: `cc${R}@prov.test`, insumos: [{ id: harina2.id, precio_unitario: 0 }] }, admin);
+    t('proveedor: costo unitario 0 o negativo → 400', r.s === 400);
+    r = await call('POST', '/api/proveedores', { nombre: `Con costo ${R}`, correo: `cp${R}@prov.test`, insumos: [{ id: harina2.id, precio_unitario: 0.04 }, { id: leche.id, precio_unitario: '0.012' }] }, admin);
+    const pc = r.j.proveedor; provs.push(pc.id);
+    t('proveedor: guarda el costo unitario de cada insumo que surte', r.s === 201 && pc.insumos.find((i) => i.id === harina2.id).precio_unitario === '0.0400' || Number(pc.insumos.find((i) => i.id === harina2.id).precio_unitario) === 0.04);
+    r = await call('POST', '/api/pedidos-proveedor/cotizar', { proveedor_id: pc.id, items: [{ insumo_id: harina2.id, cantidad: 1000 }, { insumo_id: leche.id, cantidad: 500 }] }, admin);
+    t('cotizar con proveedor: usa SU costo (1000×0.04 + 500×0.012 = 46.00) y lo marca como "proveedor"', r.j.total === 46 && r.j.items.every((i) => i.origen === 'proveedor'), JSON.stringify(r.j));
+    r = await call('POST', '/api/pedidos-proveedor/cotizar', { items: [{ insumo_id: harina2.id, cantidad: 1000 }] }, admin);
+    t('cotizar sin proveedor: usa el costo del inventario', r.j.items[0].origen === 'costo_vigente' && r.j.items[0].precio_unitario === Number(harina2.costo_unitario));
+    r = await call('POST', '/api/pedidos-proveedor', { proveedor_id: pc.id, items: [{ insumo_id: harina2.id, cantidad: 100 }], suma_stock_en: 'recepcion' }, admin);
+    pedidosPP.push(r.j.pedido.id);
+    t('el pedido sin precio escrito toma el costo del proveedor (100 × 0.04 = 4.00)', r.s === 201 && r.j.pedido.total === 4);
+    t('almacén ve el costo por proveedor al solicitar', (await call('GET', '/api/pedidos-proveedor/proveedores', undefined, almacen)).j.proveedores.find((p) => p.id === pc.id).insumos.some((i) => i.id === harina2.id && Number(i.precio_unitario) === 0.04));
+    r = await call('PUT', `/api/proveedores/${pc.id}`, { insumos: [harina2.id] }, admin);
+    t('editar solo con ids conserva el costo ya pactado', Number(r.j.proveedor.insumos[0].precio_unitario) === 0.04);
+
+    // ---------- 8) Mi cuenta: derechos ARCO ----------
+    const base2 = { nombre: 'Cliente Arco', correo: `arco${R}@prueba.test`, password: 'secreta123', acepta_privacidad: true };
+    r = await call('POST', '/api/auth/register', base2);
+    const ar = r.j.usuario, tk = r.j.token; clientes.push(ar.id);
+    r = await call('GET', '/api/auth/perfil', undefined, tk);
+    t('ACCESO: el perfil muestra nombre, correo y la versión del aviso aceptada', r.s === 200 && r.j.perfil.nombre === 'Cliente Arco' && r.j.perfil.privacidad_version === priv.VERSION && !('password_hash' in r.j.perfil));
+    t('el registro ya no guarda teléfono', (await q('SELECT telefono FROM usuarios WHERE id=$1', [ar.id]))[0].telefono === null);
+    r = await call('PUT', '/api/auth/perfil', { nombre: 'Arco Nuevo' }, tk);
+    t('RECTIFICACIÓN: cambiar el nombre no pide contraseña ni cierra la sesión', r.s === 200 && r.j.usuario.nombre === 'Arco Nuevo' && !r.j.token && (await call('GET', '/api/auth/me', undefined, tk)).s === 200);
+    t('nombre inválido → 400', (await call('PUT', '/api/auth/perfil', { nombre: 'A' }, tk)).s === 400 && (await call('PUT', '/api/auth/perfil', { correo: 'no-es-correo' }, tk)).s === 400);
+    t('cambiar el correo sin contraseña → 400', (await call('PUT', '/api/auth/perfil', { correo: `nuevo${R}@prueba.test` }, tk)).s === 400);
+    t('cambiar el correo con contraseña equivocada → 400', (await call('PUT', '/api/auth/perfil', { correo: `nuevo${R}@prueba.test`, password: 'mal' }, tk)).s === 400);
+    t('correo de otra cuenta → 409', (await call('PUT', '/api/auth/perfil', { correo: 'admin@encombo.test', password: 'secreta123' }, tk)).s === 409);
+    r = await call('PUT', '/api/auth/perfil', { correo: `nuevo${R}@prueba.test`, password: 'secreta123' }, tk);
+    const tk2 = r.j.token;
+    t('cambiar el correo (con contraseña): devuelve sesión nueva y la anterior deja de servir', r.s === 200 && tk2 && (await call('GET', '/api/auth/me', undefined, tk)).s === 401 && (await call('GET', '/api/auth/me', undefined, tk2)).j.usuario.correo === `nuevo${R}@prueba.test`);
+    t('entra con el correo nuevo', (await call('POST', '/api/auth/login', { correo: `nuevo${R}@prueba.test`, password: 'secreta123' })).s === 200);
+
+    // Tarjetas guardadas
+    const T1 = { titular: 'Cliente Arco', numero: '4242 4242 4242 4242', vence: '12/39', cvv: '123' };
+    t('tarjetas: sin sesión 401, personal 403', (await call('GET', '/api/tarjetas')).s === 401 && (await call('GET', '/api/tarjetas', undefined, admin)).s === 403);
+    r = await call('POST', '/api/tarjetas', { tarjeta: T1 }, tk2);
+    t('guardar tarjeta: devuelve solo marca y últimos 4 (nunca número ni CVV)', r.s === 201 && r.j.tarjeta.etiqueta === 'Visa •••• 4242' && !JSON.stringify(r.j).includes('4242 4242') && !JSON.stringify(r.j).includes('123'));
+    const idT = r.j.tarjeta.id;
+    const cols = (await q("SELECT column_name FROM information_schema.columns WHERE table_name='tarjetas_guardadas'")).map((c) => c.column_name).join();
+    t('la tabla no tiene columnas para número completo ni CVV', !/numero|cvv|pan/.test(cols), cols);
+    t('guardar la misma tarjeta otra vez → 409', (await call('POST', '/api/tarjetas', { tarjeta: T1 }, tk2)).s === 409);
+    t('tarjeta inválida / vencida / rechazada → 400 / 400 / 402', (await call('POST', '/api/tarjetas', { tarjeta: { ...T1, numero: '1234 5678 9012 3456' } }, tk2)).s === 400 && (await call('POST', '/api/tarjetas', { tarjeta: { ...T1, numero: '5555 5555 5555 4444', vence: '01/20' } }, tk2)).s === 400 && (await call('POST', '/api/tarjetas', { tarjeta: { ...T1, numero: '4000 0000 0000 0002' } }, tk2)).s === 402);
+    const otro = (await call('POST', '/api/auth/register', { ...base2, correo: `otro${R}@prueba.test` })).j; clientes.push(otro.usuario.id);
+    t('nadie puede ver ni borrar las tarjetas de otra persona', (await call('GET', '/api/tarjetas', undefined, otro.token)).j.tarjetas.length === 0 && (await call('DELETE', `/api/tarjetas/${idT}`, undefined, otro.token)).s === 404);
+    // pagar con la tarjeta guardada (solo CVV)
+    const G2 = (await call('GET', '/api/catalogo')).j.productos.find((p) => p.nombre === 'Galleta');
+    const DIR = { cp: '91190', colonia: 'Las Flores', calle: 'Calle Arco', num_ext: '1' };
+    const lejos = svc.addDays(hoy, 4);
+    let ck8 = await call('POST', '/api/pedidos/checkout', { combo: 'personalizado', items: [{ producto_id: G2.id, cantidad: 1 }], fecha: lejos, hora: '12:00', direccion: DIR }, tk2);
+    t('pagar con tarjeta guardada sin CVV → 400', (await call('POST', `/api/pagos/simulado/${ck8.j.checkout_id}/aprobar`, { tarjeta_guardada_id: idT }, tk2)).s === 400);
+    t('pagar con la tarjeta guardada de otra persona → 404', (await call('POST', `/api/pagos/simulado/${ck8.j.checkout_id}/aprobar`, { tarjeta_guardada_id: idT, cvv: '123' }, otro.token)).s === 404);
+    r = await call('POST', `/api/pagos/simulado/${ck8.j.checkout_id}/aprobar`, { tarjeta_guardada_id: idT, cvv: '123' }, tk2);
+    t('pagar con la tarjeta guardada y su CVV → pedido creado, pago "Visa •••• 4242"', r.s === 200 && (await q("SELECT tarjeta FROM pagos ORDER BY id DESC LIMIT 1"))[0].tarjeta === 'Visa •••• 4242', JSON.stringify(r.j).slice(0, 150));
+    // pagar con tarjeta nueva y guardarla
+    ck8 = await call('POST', '/api/pedidos/checkout', { combo: 'personalizado', items: [{ producto_id: G2.id, cantidad: 1 }], fecha: lejos, hora: '13:00', direccion: DIR }, tk2);
+    await call('POST', `/api/pagos/simulado/${ck8.j.checkout_id}/aprobar`, { tarjeta: { ...T1, numero: '5555 5555 5555 4444' }, guardar: true }, tk2);
+    t('pagar con tarjeta nueva marcando "guardar": queda en Mi cuenta', (await call('GET', '/api/tarjetas', undefined, tk2)).j.tarjetas.some((x) => x.etiqueta === 'Mastercard •••• 4444'));
+    t('ELIMINAR tarjeta guardada', (await call('DELETE', `/api/tarjetas/${idT}`, undefined, tk2)).s === 200 && (await call('GET', '/api/tarjetas', undefined, tk2)).j.tarjetas.length === 1);
+
+    // Eliminar cuenta (cancelación / oposición)
+    t('eliminar cuenta: sin sesión 401 y el personal no puede (403)', (await call('POST', '/api/auth/eliminar-cuenta', {})).s === 401 && (await call('POST', '/api/auth/eliminar-cuenta', { password: process.env.SEED_PASSWORD, confirmar: true }, admin)).s === 403);
+    t('eliminar cuenta con contraseña equivocada o sin confirmar → 400', (await call('POST', '/api/auth/eliminar-cuenta', { password: 'mal', confirmar: true }, tk2)).s === 400 && (await call('POST', '/api/auth/eliminar-cuenta', { password: 'secreta123' }, tk2)).s === 400);
+    r = await call('POST', '/api/auth/eliminar-cuenta', { password: 'secreta123', confirmar: true }, tk2);
+    t('con pedidos sin entregar NO se puede eliminar → 409', r.s === 409 && /no se entregan/.test(r.j.error));
+    await db.query("UPDATE pedidos SET estatus='Entregado' WHERE cliente_id=$1", [ar.id]);
+    r = await call('POST', '/api/auth/eliminar-cuenta', { password: 'secreta123', confirmar: true }, tk2);
+    const fila2 = (await q('SELECT nombre,correo,activo,password_hash,eliminado_en FROM usuarios WHERE id=$1', [ar.id]))[0];
+    t('eliminar cuenta: se anonimiza la persona y se cierra la sesión', r.s === 200 && fila2.nombre === 'Cuenta eliminada' && /@eliminada\.invalid$/.test(fila2.correo) && !fila2.activo && fila2.eliminado_en && (await call('GET', '/api/auth/me', undefined, tk2)).s === 401);
+    t('…se borran tarjetas, avisos y direcciones, pero el pedido (venta) se conserva', (await q('SELECT count(*)::int n FROM tarjetas_guardadas WHERE usuario_id=$1', [ar.id]))[0].n === 0 && (await q('SELECT count(*)::int n FROM notificaciones WHERE cliente_id=$1', [ar.id]))[0].n === 0 && (await q('SELECT count(*)::int n, count(dir_calle)::int d FROM pedidos WHERE cliente_id=$1', [ar.id]))[0].d === 0 && (await q('SELECT count(*)::int n FROM pedidos WHERE cliente_id=$1', [ar.id]))[0].n >= 1);
+    t('…y ya no puede iniciar sesión con su correo anterior', (await call('POST', '/api/auth/login', { correo: `nuevo${R}@prueba.test`, password: 'secreta123' })).s === 401);
+    const aviso2 = await (await fetch(B + '/privacidad.html')).text();
+    t('el aviso (punto 6) remite a "Mi cuenta" y ya no menciona el teléfono del cliente', /Mi cuenta/.test(aviso2) && !/teléfono/i.test(aviso2));
   } catch (e) { fail++; console.log('FAIL excepción', e.stack || e); }
   finally {
     try {
       const ids = clientes;
+      await db.query('DELETE FROM checkouts WHERE cliente_id = ANY($1)', [ids]);
+      await db.query('DELETE FROM movimientos_inventario WHERE pedido_id IN (SELECT id FROM pedidos WHERE cliente_id = ANY($1))', [ids]);
       await db.query('DELETE FROM pagos WHERE pedido_id IN (SELECT id FROM pedidos WHERE cliente_id = ANY($1))', [ids]);
       await db.query('DELETE FROM pedido_estatus_historial WHERE pedido_id IN (SELECT id FROM pedidos WHERE cliente_id = ANY($1))', [ids]);
+      await db.query('DELETE FROM notificaciones WHERE cliente_id = ANY($1)', [ids]);
       await db.query('DELETE FROM pedido_items WHERE pedido_id IN (SELECT id FROM pedidos WHERE cliente_id = ANY($1))', [ids]);
       await db.query('DELETE FROM pedidos WHERE cliente_id = ANY($1)', [ids]);
-      await db.query('DELETE FROM checkouts WHERE cliente_id = ANY($1)', [ids]);
       await db.query('DELETE FROM usuarios WHERE id = ANY($1)', [ids]);
       await db.query('DELETE FROM notificaciones WHERE id > $1', [notifMax]);
       await db.query('DELETE FROM movimientos_inventario WHERE id > $1', [movMax]);

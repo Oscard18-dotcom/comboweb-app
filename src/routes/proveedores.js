@@ -6,7 +6,7 @@ const { wrap, isEmail, isText, paramId } = require('../util');
 router.use(auth, roles('admin'));
 
 const SEL = `SELECT p.id,p.nombre,p.correo,p.contacto,p.telefono,p.notas,p.activo,
-  COALESCE((SELECT json_agg(json_build_object('id',i.id,'nombre',i.nombre,'unidad',i.unidad) ORDER BY i.nombre)
+  COALESCE((SELECT json_agg(json_build_object('id',i.id,'nombre',i.nombre,'unidad',i.unidad,'precio_unitario',pi.precio_unitario) ORDER BY i.nombre)
               FROM proveedor_insumos pi JOIN insumos i ON i.id=pi.insumo_id WHERE pi.proveedor_id=p.id),'[]'::json) AS insumos,
   (SELECT count(*)::int FROM pedidos_proveedor pp WHERE pp.proveedor_id=p.id) AS pedidos
   FROM proveedores p`;
@@ -26,19 +26,37 @@ function validar(b, parcial) {
   if (b.activo !== undefined) { if (typeof b.activo !== 'boolean') return { error: 'Datos inválidos.' }; v.activo = b.activo; }
   if (b.insumos !== undefined) {
     if (!Array.isArray(b.insumos) || b.insumos.length > 100) return { error: 'La lista de insumos no es válida.' };
-    const ids = b.insumos.map((x) => Number.parseInt(x, 10));
-    if (ids.some((x) => !Number.isInteger(x) || x <= 0)) return { error: 'La lista de insumos no es válida.' };
-    v.insumos = [...new Set(ids)];
+    // Cada insumo del proveedor lleva su costo unitario: [{id, precio_unitario}] (también se acepta solo el id: conserva/usa el costo vigente)
+    const lista = [];
+    for (const x of b.insumos) {
+      const obj = x !== null && typeof x === 'object';
+      const id = Number.parseInt(obj ? x.id : x, 10);
+      if (!Number.isInteger(id) || id <= 0) return { error: 'La lista de insumos no es válida.' };
+      let pu = null;
+      if (obj) {
+        const n = typeof x.precio_unitario === 'string' && x.precio_unitario.trim() !== '' ? Number(x.precio_unitario) : x.precio_unitario;
+        if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0 || n > 1e6 || Math.abs(n * 1e4 - Math.round(n * 1e4)) > 1e-6) return { error: 'Escribe el costo unitario de cada insumo del proveedor (mayor a 0, máximo 4 decimales).' };
+        pu = Math.round(n * 1e4) / 1e4;
+      }
+      if (lista.some((y) => y.id === id)) continue;
+      lista.push({ id, pu });
+    }
+    v.insumos = lista;
   }
   return { v };
 }
-async function guardarInsumos(c, id, ids) {
+async function guardarInsumos(c, id, lista) {
+  const ids = lista.map((x) => x.id);
   if (ids.length) {
     const n = (await c.query('SELECT count(*)::int AS n FROM insumos WHERE id = ANY($1::int[])', [ids])).rows[0].n;
     if (n !== ids.length) return false;
   }
+  const previos = new Map((await c.query('SELECT insumo_id,precio_unitario FROM proveedor_insumos WHERE proveedor_id=$1', [id])).rows.map((r) => [r.insumo_id, r.precio_unitario]));
   await c.query('DELETE FROM proveedor_insumos WHERE proveedor_id=$1', [id]);
-  for (const i of ids) await c.query('INSERT INTO proveedor_insumos(proveedor_id,insumo_id) VALUES($1,$2)', [id, i]);
+  for (const x of lista) {
+    // Sin precio capturado: se conserva el que ya tenía con este proveedor o, si es nuevo, el costo vigente del insumo
+    await c.query('INSERT INTO proveedor_insumos(proveedor_id,insumo_id,precio_unitario) VALUES($1,$2,COALESCE($3,$4,(SELECT costo_unitario FROM insumos WHERE id=$2)))', [id, x.id, x.pu, previos.get(x.id) ?? null]);
+  }
   return true;
 }
 const dup = (res) => res.status(409).json({ error: 'Ya existe un proveedor con ese nombre.' });

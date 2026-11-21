@@ -16,20 +16,25 @@
       <h2>Pago con tarjeta</h2>
       <p id="total" class="tot"></p>
       <form id="form" novalidate autocomplete="off" aria-label="Datos de la tarjeta">
-        <label>Nombre del titular
-          <input id="titular" name="cc-name" type="text" autocomplete="cc-name" maxlength="60" placeholder="Como aparece en la tarjeta" required>
-          <small class="fe" id="e-titular" role="alert"></small></label>
-        <label>Número de tarjeta
-          <input id="numero" name="cc-number" type="text" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="0000 0000 0000 0000" required>
-          <small class="fe" id="e-numero" role="alert"></small></label>
+        <label id="bloque-guardada" hidden>Tarjeta
+          <select id="guardada" aria-label="Tarjeta a usar"></select></label>
+        <div id="bloque-nueva">
+          <label>Nombre del titular
+            <input id="titular" name="cc-name" type="text" autocomplete="cc-name" maxlength="60" placeholder="Como aparece en la tarjeta" required>
+            <small class="fe" id="e-titular" role="alert"></small></label>
+          <label>Número de tarjeta
+            <input id="numero" name="cc-number" type="text" inputmode="numeric" autocomplete="cc-number" maxlength="23" placeholder="0000 0000 0000 0000" required>
+            <small class="fe" id="e-numero" role="alert"></small></label>
+        </div>
         <div class="row">
-          <label style="flex:1">Vencimiento
+          <label style="flex:1" id="bloque-vence">Vencimiento
             <input id="vence" name="cc-exp" type="text" inputmode="numeric" autocomplete="cc-exp" maxlength="7" placeholder="MM/AA" required>
             <small class="fe" id="e-vence" role="alert"></small></label>
           <label style="flex:1">Código (CVV)
             <input id="cvv" name="cc-csc" type="password" inputmode="numeric" autocomplete="cc-csc" maxlength="4" placeholder="123" required>
             <small class="fe" id="e-cvv" role="alert"></small></label>
         </div>
+        <label class="chk acepto" id="bloque-guardar"><input id="guardar" type="checkbox"> <span>Guardar esta tarjeta en Mi cuenta (solo marca, últimos 4 dígitos, titular y vencimiento; nunca el número completo ni el CVV)</span></label>
         <p id="err" class="err" role="alert"></p>
         <div class="row">
           <button id="aprobar" class="btn" type="submit" disabled>Pagar</button>

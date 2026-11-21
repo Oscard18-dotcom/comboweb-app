@@ -93,8 +93,8 @@
         const pu = e('input', { type: 'number', min: '0', step: 'any', 'aria-label': 'Precio unitario (MXN)', placeholder: 'Precio unit.', 'data-precio': '1' }), im = e('span', { class: 'mu u', 'data-importe': '1' }, '');
         if (insumoId) s.value = String(insumoId); if (cantidad) c.value = String(cantidad);
         const imp = () => { im.textContent = Number(c.value) > 0 && pu.value !== '' ? mx(Number(c.value) * Number(pu.value)) : ''; total(); };
-        // La cotización arranca con el último costo registrado del insumo; se puede cambiar por el precio real que dé el proveedor
-        const act = () => { const i = insumos.find((x) => String(x.id) === s.value); u.textContent = i ? i.unidad : ''; pu.value = i ? String(i.costo_unitario) : ''; imp(); }; s.onchange = act; c.oninput = imp; pu.oninput = imp;
+        // El precio sale del costo unitario que se anotó para ESTE proveedor (si no lo tiene, el último costo del insumo); se puede ajustar
+        const act = () => { const i = insumos.find((x) => String(x.id) === s.value); u.textContent = i ? i.unidad : ''; const pr = provActual(), pp = i && pr && pr.insumos ? pr.insumos.find((x) => x.id === i.id) : null; pu.value = i ? String(pp ? pp.precio_unitario : i.costo_unitario) : ''; pu.title = pp ? 'Costo pactado con este proveedor' : 'Último costo registrado del insumo'; imp(); }; s.onchange = act; c.oninput = imp; pu.oninput = imp;
         const fila = e('div', { class: 'lp' }, s, c, u, pu, im, e('button', { class: 'mini', type: 'button', 'aria-label': 'Quitar este insumo', onclick: () => fila.remove() }, '✕'));
         fila.leer = () => ({ insumo_id: s.value, cantidad: c.value, precio_unitario: pu.value });
         fila.importe = () => (Number(c.value) > 0 && pu.value !== '' ? Number(c.value) * Number(pu.value) : 0);
@@ -157,7 +157,7 @@
           lista = (await api('/proveedores' + (archivados ? '?inactivos=1' : ''))).proveedores;
           tabla.replaceChildren(e('div', { class: 'card tw' }, lista.length ? e('table', {}, e('thead', {}, e('tr', {}, ['Proveedor', 'Correo', 'Contacto', 'Teléfono', 'Surte', 'Pedidos', ''].map((x) => e('th', {}, x)))),
             e('tbody', {}, lista.map((p) => e('tr', {}, e('td', {}, e('b', {}, p.nombre), p.activo ? null : e('span', {}, ' ', chipC('Archivado', '#7D756B'))), e('td', {}, p.correo), e('td', {}, p.contacto || '—'), e('td', {}, p.telefono || '—'),
-              e('td', {}, p.insumos.length ? p.insumos.map((i) => i.nombre).join(', ') : 'Cualquier insumo'), e('td', {}, String(p.pedidos)),
+              e('td', {}, p.insumos.length ? p.insumos.map((i) => `${i.nombre} (${mx(i.precio_unitario)}/${i.unidad})`).join(', ') : 'Cualquier insumo'), e('td', {}, String(p.pedidos)),
               e('td', { class: 'acc' }, e('button', { class: 'mini', type: 'button', onclick: () => editar(p) }, 'Editar'),
                 p.activo ? e('button', { class: 'mini', type: 'button', onclick: () => preguntarEliminar(p) }, 'Eliminar') : null)))))
             : e('p', { class: 'mu' }, 'Aún no hay proveedores. Agrega el primero con el botón de arriba.')));
@@ -166,19 +166,28 @@
       function editar(p) {
         const n = e('input', { required: true, minlength: 2, maxlength: 80, value: p ? p.nombre : '' }), c = e('input', { type: 'email', required: true, maxlength: 120, value: p ? p.correo : '' }),
           ct = e('input', { maxlength: 80, value: p && p.contacto ? p.contacto : '' }), tl = e('input', { type: 'tel', maxlength: 30, value: p && p.telefono ? p.telefono : '' }), nt = e('input', { maxlength: 300, value: p && p.notas ? p.notas : '' });
-        const marcados = new Set(p ? p.insumos.map((i) => i.id) : []);
-        const cks = insumos.map((i) => { const k = e('input', { type: 'checkbox', value: i.id }); k.checked = marcados.has(i.id); return [i, k]; });
+        const marcados = new Map(p ? p.insumos.map((i) => [i.id, i.precio_unitario]) : []);
+        // Al marcar un insumo se pide su costo unitario con ESTE proveedor: de ahí sale la cotización de los pedidos
+        const cks = insumos.map((i) => {
+          const k = e('input', { type: 'checkbox', value: i.id }), pu = e('input', { type: 'number', min: '0', step: 'any', 'aria-label': `Costo unitario de ${i.nombre} (MXN por ${i.unidad})`, placeholder: `$ por ${i.unidad}`, 'data-costo': String(i.id), class: 'costo-prov' });
+          k.checked = marcados.has(i.id); pu.value = marcados.has(i.id) ? String(marcados.get(i.id)) : '';
+          const sync = () => { pu.disabled = !k.checked; if (k.checked && pu.value === '' && Number(i.costo_unitario) > 0) pu.value = String(i.costo_unitario); if (!k.checked) pu.value = ''; };
+          k.onchange = sync; sync(); if (marcados.has(i.id)) pu.value = String(marcados.get(i.id));
+          return [i, k, pu];
+        });
         const act = e('input', { type: 'checkbox' }); act.checked = p ? p.activo : true;
         const err = caja(), b = e('button', { class: 'btn', type: 'submit' }, p ? 'Guardar cambios' : 'Guardar proveedor');
         const cerrar = e('button', { class: 'btn s', type: 'button', onclick: () => form.replaceChildren() }, 'Cancelar');
         const f = e('form', { onsubmit: enviar(b, err, async () => {
-          const body = { nombre: n.value, correo: c.value, contacto: ct.value, telefono: tl.value, notas: nt.value, insumos: cks.filter(([, k]) => k.checked).map(([i]) => i.id) };
+          const body = { nombre: n.value, correo: c.value, contacto: ct.value, telefono: tl.value, notas: nt.value, insumos: cks.filter(([, k]) => k.checked).map(([i, , pu]) => ({ id: i.id, precio_unitario: pu.value })) };
+          const sinPrecio = cks.find(([, k, pu]) => k.checked && !(Number(pu.value) > 0));
+          if (sinPrecio) throw new Error(`Escribe el costo unitario de ${sinPrecio[0].nombre} (mayor a 0).`);
           if (p) body.activo = act.checked;
           await api(p ? `/proveedores/${p.id}` : '/proveedores', { method: p ? 'PUT' : 'POST', body });
           await cargar(); form.replaceChildren(e('div', { class: 'card' }, ok(p ? 'Proveedor actualizado.' : 'Proveedor agregado.')));
         }) }, campo('Nombre del proveedor', n), campo('Correo (aquí se mandan los pedidos)', c), campo('Persona de contacto (opcional)', ct), campo('Teléfono (opcional)', tl), campo('Notas (opcional)', nt),
-          e('h3', {}, '¿Qué insumos te surte?'), e('p', { class: 'mu' }, 'Si no marcas ninguno, podrás pedirle cualquier insumo.'),
-          e('div', { class: 'lista-insumos' }, ...cks.map(([i, k]) => e('label', { class: 'chk' }, k, `${i.nombre} (${i.unidad})`))),
+          e('h3', {}, '¿Qué insumos te surte y a qué costo?'), e('p', { class: 'mu' }, 'Marca cada insumo y escribe su costo unitario con este proveedor (precio por gramo, ml o pieza). Con ese costo se calcula la cotización de tus pedidos. Si no marcas ninguno, podrás pedirle cualquier insumo al costo registrado en el inventario.'),
+          e('div', { class: 'lista-insumos' }, ...cks.map(([i, k, pu]) => e('div', { class: 'ins-prov' }, e('label', { class: 'chk' }, k, `${i.nombre} (${i.unidad})`), pu))),
           p ? e('label', { class: 'chk' }, act, 'Proveedor activo') : null, err, e('div', { class: 'row' }, b, cerrar));
         form.replaceChildren(e('div', { class: 'card' }, e('h3', {}, p ? `Editar · ${p.nombre}` : 'Agregar proveedor'), f)); form.scrollIntoView && form.scrollIntoView({ block: 'nearest' });
       }

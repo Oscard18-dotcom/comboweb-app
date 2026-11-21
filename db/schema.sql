@@ -338,5 +338,24 @@ UPDATE pedidos_proveedor SET enviado_en = creado_en WHERE enviado_en IS NULL AND
 CREATE INDEX IF NOT EXISTS pedidos_proveedor_enviado_idx ON pedidos_proveedor (enviado_en);
 
 -- (3) Aviso de privacidad: versión aceptada por cada usuario y cuándo la aceptó
+-- (2b) Costo unitario de cada insumo POR PROVEEDOR (de aquí sale la cotización de los pedidos)
+ALTER TABLE proveedor_insumos ADD COLUMN IF NOT EXISTS precio_unitario NUMERIC(12,4) NOT NULL DEFAULT 0 CHECK (precio_unitario >= 0);
+UPDATE proveedor_insumos pi SET precio_unitario = i.costo_unitario FROM insumos i WHERE i.id = pi.insumo_id AND pi.precio_unitario = 0 AND i.costo_unitario > 0;
+
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS privacidad_version VARCHAR(12);
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS privacidad_aceptada_en TIMESTAMPTZ;
+
+-- (4) Mi cuenta: tarjetas guardadas por el cliente. NUNCA se guarda el número completo ni el CVV:
+--     solo marca, últimos 4 dígitos, titular y vencimiento (con una pasarela real se guardaría el token del procesador).
+CREATE TABLE IF NOT EXISTS tarjetas_guardadas (
+  id         SERIAL PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  marca      VARCHAR(20) NOT NULL,
+  ultimos4   CHAR(4) NOT NULL,
+  titular    VARCHAR(60) NOT NULL,
+  vence      CHAR(5) NOT NULL,
+  creado_en  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (usuario_id, marca, ultimos4, vence)
+);
+-- (5) Eliminar la cuenta (derecho de cancelación): la fila se anonimiza para conservar el historial de ventas
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS eliminado_en TIMESTAMPTZ;

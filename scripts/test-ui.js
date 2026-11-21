@@ -430,7 +430,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const wcta = (await abrir(B + '/', { t: rc.token, u: JSON.stringify(rc.usuario) })).window;
     await until(() => !wcta.document.querySelector('#btn-cuenta').hidden);
     wcta.document.querySelector('#btn-cuenta').click();
-    const fc = () => wcta.document.querySelector('#cuenta form'), setF = (n, v) => { fc().elements[n].value = v; };
+    const fc = () => wcta.document.querySelector('#cuenta form[data-form=password]'), setF = (n, v) => { fc().elements[n].value = v; };
     t('mi cuenta: el botón abre el formulario de cambio de contraseña', await until(() => !wcta.document.querySelector('#cuenta').hidden && fc()));
     setF('actual', 'secreta123'); setF('nueva', 'nueva-clave-1'); setF('repetir', 'otra-distinta-9'); enviarForm(wcta, fc());
     t('mi cuenta: si la confirmación no coincide, lo dice', await until(() => /no coinciden/.test(wcta.document.querySelector('#cuenta').textContent)));
@@ -534,7 +534,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('administrador: aprueba y la solicitud pasa a enviada (gasto registrado)', await until(async () => (await db.query('SELECT estado FROM pedidos_proveedor WHERE id=$1', [ppSol.id])).rows[0].estado === 'enviado') && limpio(wad));
     // Ticket de compra desde cocina
     const cliT = (await db.query('SELECT id FROM usuarios WHERE id=$1', [uid])).rows[0].id;
-    const pedT = (await db.query(`INSERT INTO pedidos(cliente_id,fecha_entrega,hora_entrega,total,estatus,combo,combo_nombre) VALUES($1,CURRENT_DATE,'13:00',30,'Pendiente','personalizado','Combo personalizado') RETURNING id`, [cliT])).rows[0].id;
+    const pedT = (await db.query(`INSERT INTO pedidos(cliente_id,fecha_entrega,hora_entrega,total,estatus,combo,combo_nombre) VALUES($1,(now() AT TIME ZONE 'America/Mexico_City')::date,'13:00',30,'Pendiente','personalizado','Combo personalizado') RETURNING id`, [cliT])).rows[0].id;
     await db.query('INSERT INTO pedido_items(pedido_id,producto_id,cantidad,precio_unitario) VALUES($1,(SELECT id FROM productos WHERE nombre=\'Galleta\'),2,15)', [pedT]);
     const wco = await abrirComo('cocina@encombo.test'); let impresiones = 0; wco.print = () => { impresiones++; };
     await until(() => wco.document.querySelector(`#staff .oc[aria-label="Pedido ${svc.folio(pedT)}"]`));
@@ -558,6 +558,56 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('no se puede continuar sin marcar la casilla', await until(() => /Marca la casilla/.test(wp.document.getElementById('privacidad-modal').textContent)) && !!wp.document.getElementById('privacidad-modal'));
     wp.document.getElementById('acepto-priv').checked = true; wp.document.querySelector('[data-aceptar-privacidad]').click();
     t('al aceptar: se guarda, se cierra la ventana y queda registrada la versión', await until(() => !wp.document.getElementById('privacidad-modal')) && (await db.query('SELECT privacidad_version FROM usuarios WHERE id=$1', [rp.usuario.id])).rows[0].privacidad_version === require('../src/services/privacidad').VERSION);
+    /* ---------- Costo por proveedor, Mi cuenta (ARCO) y tarjetas guardadas ---------- */
+    pestDe(wad, 'Pedidos a proveedor').click(); await until(() => subDe(wad, 'Proveedores')); subDe(wad, 'Proveedores').click();
+    const bpA = (x) => [...wad.document.querySelectorAll('#staff button')].find((b) => b.textContent === x);
+    await until(() => bpA('+ Agregar proveedor')); bpA('+ Agregar proveedor').click();
+    const pfA = await until(() => wad.document.querySelector('#staff form'));
+    const ck1 = pfA.querySelector('.ins-prov input[type=checkbox]'), pu1 = pfA.querySelector('.ins-prov input.costo-prov');
+    t('proveedor: cada insumo tiene su casilla de costo unitario, bloqueada hasta marcarlo', !!ck1 && !!pu1 && pu1.disabled === true);
+    ck1.checked = true; ck1.dispatchEvent(new wad.Event('change', { bubbles: true }));
+    t('proveedor: al marcar el insumo se activa el costo y se sugiere el del inventario', pu1.disabled === false && Number(pu1.value) > 0);
+    const NP2 = 'UI7 Costo ' + R; const cA = pfA.querySelectorAll('input:not([type=checkbox]):not(.costo-prov)');
+    cambiar(wad, cA[0], NP2); cambiar(wad, cA[1], `costo${R}@ui7.test`); cambiar(wad, pu1, '');
+    enviarForm(wad, pfA);
+    t('proveedor: sin costo unitario no se guarda y lo pide', await until(() => /costo unitario/i.test(wad.document.querySelector('#staff .errbox').textContent)) && (await db.query('SELECT 1 FROM proveedores WHERE nombre=$1', [NP2])).rows.length === 0);
+    cambiar(wad, pu1, '0.031'); enviarForm(wad, pfA);
+    t('proveedor: con su costo unitario se guarda y la tabla lo muestra', await until(() => [...wad.document.querySelectorAll('#staff tbody tr')].some((r) => r.textContent.includes(NP2) && /\$0\.03/.test(r.textContent))));
+    // Mi cuenta de un cliente
+    const rcA = await (await fetch(B + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acepta_privacidad: true, nombre: 'Cuenta UI6 Arco', correo: `ui6arco${R}@prueba.test`, password: 'secreta123' }) })).json();
+    const wcl = (await abrir(B + '/', { t: rcA.token, u: JSON.stringify(rcA.usuario) })).window, $cl = (q2) => wcl.document.querySelector(q2);
+    await until(() => !$cl('#btn-cuenta').hidden); $cl('#btn-cuenta').click();
+    t('mi cuenta: tiene datos, contraseña, tarjetas y privacidad (derechos ARCO)', await until(() => $cl('#cuenta form[data-form=datos]') && $cl('#cuenta form[data-form=password]') && $cl('[data-agregar-tarjeta]') && $cl('[data-eliminar-cuenta]') && /Aviso de privacidad/.test($cl('#cuenta').textContent)));
+    const fdA = $cl('#cuenta form[data-form=datos]');
+    cambiar(wcl, fdA.elements.nombre, 'Nombre Cambiado'); enviarForm(wcl, fdA);
+    t('mi cuenta: modifica el nombre y se refleja en la sesión', await until(() => /Datos actualizados/.test($cl('#cuenta').textContent) && /Nombre Cambiado/.test($cl('#who').textContent)) && (await db.query('SELECT nombre FROM usuarios WHERE id=$1', [rcA.usuario.id])).rows[0].nombre === 'Nombre Cambiado');
+    cambiar(wcl, fdA.elements.correo, `ui6nuevo${R}@prueba.test`); enviarForm(wcl, fdA);
+    t('mi cuenta: cambiar el correo sin contraseña lo impide', await until(() => /contraseña actual/.test($cl('#cuenta .err').textContent)));
+    cambiar(wcl, fdA.elements.password, 'secreta123'); enviarForm(wcl, fdA);
+    t('mi cuenta: cambia el correo con la contraseña y la sesión sigue abierta', await until(() => /Datos actualizados/.test($cl('#cuenta').textContent) && $cl('#auth').hidden === true) && (await db.query('SELECT correo FROM usuarios WHERE id=$1', [rcA.usuario.id])).rows[0].correo === `ui6nuevo${R}@prueba.test`);
+    $cl('[data-agregar-tarjeta]').click();
+    const ftA = await until(() => $cl('#cuenta form[data-form=tarjeta]'));
+    cambiar(wcl, ftA.elements.titular, 'Cuenta Arco'); cambiar(wcl, ftA.elements.numero, '4242 4242 4242 4242'); cambiar(wcl, ftA.elements.vence, '12/39'); cambiar(wcl, ftA.elements.cvv, '123'); enviarForm(wcl, ftA);
+    t('mi cuenta: guarda una tarjeta y la lista como "Visa •••• 4242" (sin número completo)', await until(() => /Visa •••• 4242/.test($cl('[data-tarjetas]').textContent)) && !/4242 4242/.test($cl('#cuenta').textContent));
+    // La pantalla de pago ofrece la tarjeta guardada y solo pide el CVV
+    const tokC = (await (await fetch(B + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ correo: `ui6nuevo${R}@prueba.test`, password: 'secreta123' }) })).json());
+    const lejos2 = (() => { const d = new Date(); d.setDate(d.getDate() + 5); return d.toISOString().slice(0, 10); })();
+    const gal2 = (await db.query("SELECT id FROM productos WHERE nombre='Galleta'")).rows[0].id;
+    const ckA = await (await fetch(B + '/api/pedidos/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokC.token }, body: JSON.stringify({ combo: 'personalizado', items: [{ producto_id: gal2, cantidad: 1 }], fecha: lejos2, hora: '12:00', direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle UI', num_ext: '1' } }) })).json();
+    const wpg = (await abrir(B + '/pago-simulado.html?checkout=' + ckA.checkout_id, { t: tokC.token, u: JSON.stringify(tokC.usuario) })).window, dpg = wpg.document;
+    t('pago: ofrece la tarjeta guardada y oculta número y vencimiento (solo pide el CVV)', await until(() => !dpg.querySelector('#bloque-guardada').hidden && dpg.querySelector('#guardada').value !== '') && dpg.querySelector('#bloque-nueva').hidden === true && dpg.querySelector('#bloque-vence').hidden === true && dpg.querySelector('#bloque-guardar').hidden === true && !dpg.querySelector('#cvv').closest('label').hidden);
+    dpg.querySelector('#guardada').value = ''; dpg.querySelector('#guardada').dispatchEvent(new wpg.Event('change', { bubbles: true }));
+    t('pago: "Usar otra tarjeta" vuelve a mostrar el formulario completo y la opción de guardarla', dpg.querySelector('#bloque-nueva').hidden === false && dpg.querySelector('#bloque-guardar').hidden === false);
+    // Eliminar tarjeta y cuenta
+    $cl('[data-quitar-tarjeta]').click();
+    t('mi cuenta: elimina la tarjeta guardada', await until(() => /Todavía no tienes tarjetas guardadas/.test($cl('[data-tarjetas]').textContent)));
+    await db.query("UPDATE pedidos SET estatus='Entregado' WHERE cliente_id=$1", [rcA.usuario.id]);
+    $cl('[data-eliminar-cuenta]').click();
+    const feA = await until(() => $cl('#cuenta form[data-form=eliminar]'));
+    cambiar(wcl, feA.elements.password, 'mala'); enviarForm(wcl, feA);
+    t('mi cuenta: eliminar pide la contraseña y rechaza una equivocada', await until(() => /contraseña no es correcta/.test(feA.querySelector('.err').textContent)) && (await db.query('SELECT activo FROM usuarios WHERE id=$1', [rcA.usuario.id])).rows[0].activo === true);
+    cambiar(wcl, feA.elements.password, 'secreta123'); enviarForm(wcl, feA);
+    t('mi cuenta: eliminar la cuenta cierra la sesión y anonimiza a la persona', await until(async () => (await db.query('SELECT nombre,activo FROM usuarios WHERE id=$1', [rcA.usuario.id])).rows[0].activo === false) && (await db.query('SELECT nombre FROM usuarios WHERE id=$1', [rcA.usuario.id])).rows[0].nombre === 'Cuenta eliminada' && await until(() => !$cl('#auth').hidden));
     t('sin errores de JavaScript en todo el recorrido', errores.length === 0, errores.join(' || '));
   } catch (e) { fail++; console.log('FAIL error inesperado', e); }
   finally {

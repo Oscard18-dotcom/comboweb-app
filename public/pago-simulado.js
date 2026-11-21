@@ -17,9 +17,18 @@ $('#numero').addEventListener('input', (ev) => { const d = ev.target.value.repla
 $('#vence').addEventListener('input', (ev) => { const d = ev.target.value.replace(/\D/g, '').slice(0, 4); ev.target.value = d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d; });
 $('#cvv').addEventListener('input', (ev) => { ev.target.value = ev.target.value.replace(/\D/g, '').slice(0, 4); });
 
+// Tarjetas guardadas en Mi cuenta: si elige una, solo se pide el CVV
+const usaGuardada = () => $('#guardada').value !== '';
+function modo() {
+  const g = usaGuardada();
+  $('#bloque-nueva').hidden = g; $('#bloque-vence').hidden = g; $('#bloque-guardar').hidden = g;
+}
+$('#guardada').addEventListener('change', () => { limpiarErrores(); modo(); });
+
 // Revisión rápida en el navegador (el servidor vuelve a validar todo)
 function revisar() {
   limpiarErrores(); let ok = true;
+  if (usaGuardada()) { if ($('#cvv').value.length < 3) { marcar('cvv', 'Escribe el código de seguridad.'); return false; } return true; }
   if ($('#titular').value.trim().length < 3) { marcar('titular', 'Escribe el nombre como aparece en la tarjeta.'); ok = false; }
   if ($('#numero').value.replace(/\D/g, '').length < 13) { marcar('numero', 'El número de tarjeta está incompleto.'); ok = false; }
   if (!/^\d{2}\/\d{2}$/.test($('#vence').value)) { marcar('vence', 'Escribe la fecha como MM/AA.'); ok = false; }
@@ -35,12 +44,21 @@ function revisar() {
     $('#aprobar').disabled = $('#rechazar').disabled = checkout.estado !== 'creado';
     if (checkout.estado !== 'creado') $('#err').textContent = 'Este pago ya fue procesado.';
   } catch (e) { $('#err').textContent = e.message; return; }
+  try {
+    const { tarjetas } = await api('/tarjetas');
+    if (tarjetas.length) {
+      $('#guardada').replaceChildren(...tarjetas.map((t) => Object.assign(document.createElement('option'), { value: String(t.id), textContent: `${t.etiqueta} · vence ${t.vence}` })), Object.assign(document.createElement('option'), { value: '', textContent: 'Usar otra tarjeta' }));
+      $('#bloque-guardada').hidden = false; $('#guardada').value = String(tarjetas[0].id);
+    }
+  } catch (e) { /* sin tarjetas guardadas: se captura una nueva */ }
+  modo();
   $('#form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     if (!revisar()) return;
     $('#aprobar').disabled = true; $('#aprobar').textContent = 'Procesando…';
     try {
-      await api(`/pagos/simulado/${id}/aprobar`, 'POST', { tarjeta: { titular: $('#titular').value, numero: $('#numero').value, vence: $('#vence').value, cvv: $('#cvv').value } });
+      await api(`/pagos/simulado/${id}/aprobar`, 'POST', usaGuardada() ? { tarjeta_guardada_id: Number($('#guardada').value), cvv: $('#cvv').value }
+        : { tarjeta: { titular: $('#titular').value, numero: $('#numero').value, vence: $('#vence').value, cvv: $('#cvv').value }, guardar: $('#guardar').checked });
       $('#cvv').value = ''; $('#numero').value = '';
       location.assign('/?checkout=' + id);
     } catch (e) {

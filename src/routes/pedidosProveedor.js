@@ -16,7 +16,7 @@ const manejar = (fn) => wrap(async (req, res) => {
 /* Proveedores activos (lo mínimo para elegir a quién pedir; el catálogo completo de proveedores es solo del administrador) */
 router.get('/proveedores', manejar(async (req, res) => {
   const { rows } = await db.query(
-    `SELECT p.id,p.nombre,${req.user.rol === 'admin' ? 'p.correo,' : ''}COALESCE((SELECT json_agg(json_build_object('id',pi.insumo_id)) FROM proveedor_insumos pi WHERE pi.proveedor_id=p.id),'[]'::json) AS insumos
+    `SELECT p.id,p.nombre,${req.user.rol === 'admin' ? 'p.correo,' : ''}COALESCE((SELECT json_agg(json_build_object('id',pi.insumo_id,'precio_unitario',pi.precio_unitario)) FROM proveedor_insumos pi WHERE pi.proveedor_id=p.id),'[]'::json) AS insumos
        FROM proveedores p WHERE p.activo ORDER BY lower(p.nombre)`);
   res.json({ proveedores: rows });
 }));

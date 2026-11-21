@@ -31,7 +31,7 @@ const DUMMY_HASH = bcrypt.hashSync('relleno-no-es-una-contraseña', 12);
 
 // Registro público: SIEMPRE crea clientes. El personal lo da de alta el administrador.
 router.post('/register', limiter, wrap(async (req, res) => {
-  const { nombre, correo, telefono, password, acepta_privacidad } = req.body || {};
+  const { nombre, correo, password, acepta_privacidad } = req.body || {};
   if (acepta_privacidad !== true) return res.status(400).json({ error: 'Para crear tu cuenta debes aceptar el Aviso de privacidad.' });
   if (!isText(nombre, 2, 80)) return res.status(400).json({ error: 'Escribe tu nombre completo.' });
   if (!isEmail(correo)) return res.status(400).json({ error: 'Escribe un correo válido.' });
@@ -39,8 +39,8 @@ router.post('/register', limiter, wrap(async (req, res) => {
   const hash = await bcrypt.hash(password, 12);
   try {
     const { rows } = await db.query(
-      "INSERT INTO usuarios(nombre,correo,telefono,password_hash,rol,privacidad_version,privacidad_aceptada_en) VALUES($1,$2,$3,$4,'cliente',$5,now()) RETURNING id,nombre,correo,rol,token_version,privacidad_version",
-      [nombre.trim(), correo.trim().toLowerCase(), telefono ? String(telefono).slice(0, 20) : null, hash, priv.VERSION]);
+      "INSERT INTO usuarios(nombre,correo,password_hash,rol,privacidad_version,privacidad_aceptada_en) VALUES($1,$2,$3,'cliente',$4,now()) RETURNING id,nombre,correo,rol,token_version,privacidad_version",
+      [nombre.trim(), correo.trim().toLowerCase(), hash, priv.VERSION]);
     res.status(201).json({ token: sign(rows[0]), usuario: pub(rows[0]) });
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'Ya existe una cuenta con este correo. Inicia sesión.' });
@@ -68,6 +68,53 @@ router.post('/cambiar-password', limiter, auth, wrap(async (req, res) => {
   const { rows: [u] } = await db.query('UPDATE usuarios SET password_hash=$2, token_version=token_version+1 WHERE id=$1 RETURNING id,nombre,correo,rol,token_version',
     [req.user.id, await bcrypt.hash(nueva, 12)]);
   res.json({ ok: true, token: sign(u) });
+}));
+
+/* ---- Mi cuenta (derechos ARCO) ----
+   Acceder: GET /perfil · Rectificar: PUT /perfil y /cambiar-password · Cancelar/Oponerse: POST /eliminar-cuenta */
+router.get('/perfil', auth, wrap(async (req, res) => {
+  const { rows: [u] } = await db.query('SELECT id,nombre,correo,rol,creado_en,privacidad_version,privacidad_aceptada_en FROM usuarios WHERE id=$1', [req.user.id]);
+  res.json({ perfil: { id: u.id, nombre: u.nombre, correo: u.correo, rol: u.rol, creado_en: u.creado_en, privacidad_version: u.privacidad_version, privacidad_aceptada_en: u.privacidad_aceptada_en } });
+}));
+
+// Cambiar nombre y/o correo. Cambiar el correo exige la contraseña actual y cierra las demás sesiones.
+router.put('/perfil', limiter, auth, wrap(async (req, res) => {
+  const b = req.body || {};
+  const { rows: [u] } = await db.query('SELECT id,nombre,correo,rol,password_hash,token_version,privacidad_version FROM usuarios WHERE id=$1', [req.user.id]);
+  const nombre = b.nombre === undefined ? u.nombre : b.nombre, correo = b.correo === undefined ? u.correo : String(b.correo).trim().toLowerCase();
+  if (!isText(nombre, 2, 80)) return res.status(400).json({ error: 'El nombre debe tener entre 2 y 80 caracteres.' });
+  if (!isEmail(correo)) return res.status(400).json({ error: 'Escribe un correo válido.' });
+  const cambiaCorreo = correo !== u.correo.toLowerCase();
+  if (cambiaCorreo && !(await bcrypt.compare(String(b.password || ''), u.password_hash))) return res.status(400).json({ error: 'Para cambiar tu correo escribe tu contraseña actual (y debe ser correcta).' });
+  try {
+    const { rows: [n] } = await db.query('UPDATE usuarios SET nombre=$2, correo=$3, token_version=token_version+$4 WHERE id=$1 RETURNING id,nombre,correo,rol,token_version,privacidad_version',
+      [u.id, nombre.trim(), correo, cambiaCorreo ? 1 : 0]);
+    res.json({ usuario: pub(n), token: cambiaCorreo ? sign(n) : undefined });
+  } catch (e) { if (e.code === '23505') return res.status(409).json({ error: 'Ese correo ya está registrado con otra cuenta.' }); throw e; }
+}));
+
+/* Eliminar mi cuenta (cancelación y oposición). Solo clientes: las cuentas del personal las administra el administrador.
+   Se borran datos personales, tarjetas guardadas y avisos; el historial de ventas se conserva sin datos que identifiquen a la persona. */
+router.post('/eliminar-cuenta', limiter, auth, wrap(async (req, res) => {
+  if (req.user.rol !== 'cliente') return res.status(403).json({ error: 'Las cuentas del personal las elimina el administrador desde Usuarios.' });
+  const { rows: [u] } = await db.query('SELECT id,password_hash FROM usuarios WHERE id=$1', [req.user.id]);
+  if (!(await bcrypt.compare(String((req.body || {}).password || ''), u.password_hash))) return res.status(400).json({ error: 'La contraseña no es correcta.' });
+  if ((req.body || {}).confirmar !== true) return res.status(400).json({ error: 'Confirma que quieres eliminar tu cuenta.' });
+  const c = await db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    const pend = (await c.query("SELECT count(*)::int n FROM pedidos WHERE cliente_id=$1 AND estatus <> 'Entregado'", [u.id])).rows[0].n;
+    if (pend > 0) { await c.query('ROLLBACK'); return res.status(409).json({ error: 'Tienes pedidos que aún no se entregan. Podrás eliminar tu cuenta cuando los recibas.' }); }
+    await c.query('DELETE FROM tarjetas_guardadas WHERE usuario_id=$1', [u.id]);
+    await c.query('DELETE FROM notificaciones WHERE cliente_id=$1', [u.id]);
+    await c.query('DELETE FROM recuperaciones_password WHERE usuario_id=$1', [u.id]);
+    await c.query("UPDATE checkouts SET payload='{}'::jsonb WHERE cliente_id=$1", [u.id]);
+    await c.query('UPDATE pedidos SET dedicatoria=NULL,dir_cp=NULL,dir_colonia=NULL,dir_calle=NULL,dir_num_ext=NULL,dir_num_int=NULL,dir_municipio=NULL,dir_estado=NULL,dir_referencias=NULL WHERE cliente_id=$1', [u.id]);
+    await c.query(`UPDATE usuarios SET nombre='Cuenta eliminada', correo=$2, telefono=NULL, password_hash=$3, activo=false, token_version=token_version+1, eliminado_en=now(),
+                    privacidad_version=NULL, privacidad_aceptada_en=NULL WHERE id=$1`, [u.id, `eliminada-${u.id}@eliminada.invalid`, await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10)]);
+    await c.query('COMMIT');
+    res.json({ eliminada: true });
+  } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
 }));
 
 // ---- Recuperar la contraseña por correo ----

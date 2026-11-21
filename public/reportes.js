@@ -77,19 +77,18 @@
   Personal.registrar('rep', 'Reportes', ['admin'], 5, (cont, H) => {
     const { e, api } = H;
     const hoy = iso(new Date());
-    let tipo = 'ventas', agrupar = 'auto';
+    let tipo = 'ventas';
     const sel = H.menuPeriodo({ inicial: 'ultimos30', etiqueta: 'Periodo' }, () => generar());
     const resultado = e('div', { class: 'imprimible' }), err = e('div', { class: 'errbox', role: 'alert' });
     const tabs = e('div', { class: 'seg noprint' });
-    const fAgr = e('select', { 'aria-label': 'Agrupar por', onchange: (ev) => { agrupar = ev.target.value; } }, e('option', { value: 'auto' }, 'Agrupar: automático'), e('option', { value: 'dia' }, 'Por día'), e('option', { value: 'semana' }, 'Por semana'), e('option', { value: 'mes' }, 'Por mes'));
     const bGen = e('button', { class: 'btn', type: 'submit' }, 'Generar');
     const NOMBRES = { ventas: 'Ventas por periodo', estatus: 'Pedidos por estatus', existencias: 'Existencias de inventario' };
     const url = (extra = '') => tipo === 'existencias' ? '/reportes/existencias' + (extra ? '?' + extra : '')
-      : `/reportes/${tipo}?${sel.consulta()}` + (tipo === 'ventas' && agrupar !== 'auto' ? `&agrupar=${agrupar}` : '') + (extra ? '&' + extra : '');
-    const form = e('form', { class: 'row filtros noprint', style: 'align-items:end', onsubmit: (ev) => { ev.preventDefault(); generar(); } }, fAgr, bGen,
+      : `/reportes/${tipo}?${sel.consulta()}` + (extra ? '&' + extra : '');
+    const form = e('form', { class: 'row filtros noprint', style: 'align-items:end', onsubmit: (ev) => { ev.preventDefault(); generar(); } }, bGen,
       e('button', { class: 'btn s', type: 'button', onclick: async () => { err.replaceChildren(); try { await H.descargar(url('formato=csv'), `${tipo}-${hoy}.csv`); } catch (er) { err.replaceChildren(e('div', {}, er.message)); } } }, 'Descargar para Excel (CSV)'),
       e('button', { class: 'btn s', type: 'button', onclick: () => window.print() }, 'Imprimir / guardar PDF'));
-    const pestanas = () => tabs.replaceChildren(...Object.entries(NOMBRES).map(([k, n]) => e('button', { type: 'button', class: k === tipo ? 'on' : '', onclick: () => { tipo = k; pestanas(); fAgr.hidden = k !== 'ventas'; sel.el.parentNode.hidden = k === 'existencias'; generar(); } }, n)));
+    const pestanas = () => tabs.replaceChildren(...Object.entries(NOMBRES).map(([k, n]) => e('button', { type: 'button', class: k === tipo ? 'on' : '', onclick: () => { tipo = k; pestanas(); sel.el.parentNode.hidden = k === 'existencias'; generar(); } }, n)));
     pestanas();
     cont.append(tabs, e('div', { class: 'noprint' }, sel.el), form, err, resultado);
 
@@ -130,6 +129,6 @@
         }
       } catch (er) { resultado.replaceChildren(); err.replaceChildren(e('div', {}, er.message)); }
     }
-    fAgr.hidden = false; generar();
+    generar();
   });
 })();

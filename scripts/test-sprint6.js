@@ -47,8 +47,8 @@ function clasifica(m, p) {
   if (p.startsWith('/api/pedidos-proveedor')) return { tipo: 'roles', roles: /\/(aprobar|rechazar|recibir|cancelar)$/.test(p) ? ['admin'] : ['almacen', 'admin'] };
   if (p.startsWith('/api/inventario')) return { tipo: 'roles', roles: ['almacen', 'admin'] };
   if (p.startsWith('/api/cocina')) return { tipo: 'roles', roles: ['cocina', 'admin'] };
-  if (p === '/api/pedidos/checkout' || p.startsWith('/api/pedidos/checkout/') || (m === 'GET' && p === '/api/pedidos') || p.startsWith('/api/pagos/simulado') || p.startsWith('/api/avisos')) return { tipo: 'roles', roles: ['cliente'] };
-  if (['/api/pedidos/:id', '/api/auth/me', '/api/auth/cambiar-password', '/api/auth/aceptar-privacidad'].includes(p)) return { tipo: 'sesion' };
+  if (p === '/api/pedidos/checkout' || p.startsWith('/api/pedidos/checkout/') || (m === 'GET' && p === '/api/pedidos') || p.startsWith('/api/pagos/simulado') || p.startsWith('/api/avisos') || p.startsWith('/api/tarjetas') || p === '/api/auth/eliminar-cuenta') return { tipo: 'roles', roles: ['cliente'] };
+  if (['/api/pedidos/:id', '/api/auth/me', '/api/auth/cambiar-password', '/api/auth/aceptar-privacidad', '/api/auth/perfil'].includes(p)) return { tipo: 'sesion' };
   return null;
 }
 const concreta = (p) => p.replace('/checkout/:id', '/checkout/00000000-0000-4000-8000-000000000000').replace('/simulado/:id', '/simulado/00000000-0000-4000-8000-000000000000').replace(/:id/g, '999999');

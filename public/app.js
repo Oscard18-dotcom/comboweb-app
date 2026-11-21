@@ -38,7 +38,7 @@ async function api(path, { method = 'GET', body } = {}) {
   const j = await r.json().catch(() => ({}));
   // Solo se cierra la sesión si el 401 es de la sesión que sigue activa (una llamada lenta hecha con la sesión anterior no debe cerrar la nueva)
   if (r.status === 401 && usado && usado === token) { setSession(null, null); throw new Error('Tu sesión expiró. Inicia sesión de nuevo.'); }
-  if (!r.ok) throw new Error(j.error || 'Ocurrió un error.');
+  if (!r.ok) { const er = new Error(j.error || 'Ocurrió un error.'); er.campos = j.campos; throw er; }
   return j;
 }
 function setSession(t, u) {
@@ -395,22 +395,99 @@ $('#f-reset').addEventListener('submit', async (e) => {
   catch (err) { $('#err').textContent = err.message; }
 });
 if (resetToken) vistaAuth('reset');
-// Mi cuenta: cambiar la propia contraseña (cierra las demás sesiones y conserva esta)
+/* Mi cuenta = derechos ARCO del Aviso de privacidad:
+   Acceder (ver tus datos) · Rectificar (cambiar nombre, correo y contraseña) · Cancelar y Oponerte (eliminar la cuenta) · y tus tarjetas guardadas */
 function abrirCuenta() {
   const c = $('#cuenta');
   if (!c.hidden) { c.hidden = true; return; }
-  const campo = (rotulo, nombre, auto) => el('label', {}, rotulo, el('input', { type: 'password', name: nombre, autocomplete: auto, required: true, maxlength: 72 }));
-  const err = el('p', { class: 'err', role: 'alert' }), okm = el('p', { class: 'okmsg', role: 'status' });
-  const f = el('form', { onsubmit: async (ev) => {
-    ev.preventDefault(); err.textContent = ''; okm.textContent = '';
+  c.hidden = false; renderCuenta();
+}
+async function renderCuenta() {
+  const c = $('#cuenta'), esCliente = user.rol === 'cliente';
+  const guardarSesion = (t, u) => { if (t) token = t; user = u; try { sessionStorage.setItem('t', token); sessionStorage.setItem('u', JSON.stringify(u)); } catch (e) { /* ok */ } paint(); };
+  const msg = () => ({ err: el('p', { class: 'err', role: 'alert' }), ok: el('p', { class: 'okmsg', role: 'status' }) });
+  const pw = (rotulo, nombre, auto) => el('label', {}, rotulo, el('input', { type: 'password', name: nombre, autocomplete: auto, required: true, maxlength: 72 }));
+  let perfil = { nombre: user.nombre, correo: user.correo };
+  try { perfil = (await api('/auth/perfil')).perfil; } catch (e) { /* se usa lo que ya sabemos */ }
+
+  // 1) Mis datos (Acceder y Rectificar)
+  const m1 = msg();
+  const fd = el('form', { 'data-form': 'datos', onsubmit: async (ev) => {
+    ev.preventDefault(); m1.err.textContent = ''; m1.ok.textContent = '';
+    const v = new FormData(fd), cambia = v.get('correo').trim().toLowerCase() !== perfil.correo.toLowerCase();
+    try {
+      const j = await api('/auth/perfil', { method: 'PUT', body: { nombre: v.get('nombre'), correo: v.get('correo'), ...(cambia ? { password: v.get('password') } : {}) } });
+      guardarSesion(j.token, j.usuario); perfil.nombre = j.usuario.nombre; perfil.correo = j.usuario.correo; fd.elements.password.value = ''; m1.ok.textContent = 'Datos actualizados.';
+    } catch (e) { m1.err.textContent = e.message; }
+  } },
+    el('label', {}, 'Nombre', el('input', { name: 'nombre', value: perfil.nombre, required: true, minlength: 2, maxlength: 80, autocomplete: 'name' })),
+    el('label', {}, 'Correo', el('input', { name: 'correo', type: 'email', value: perfil.correo, required: true, maxlength: 120, autocomplete: 'email' })),
+    el('label', {}, 'Contraseña actual (solo si cambias el correo)', el('input', { type: 'password', name: 'password', autocomplete: 'current-password', maxlength: 72 })),
+    m1.err, m1.ok, el('button', { class: 'btn', type: 'submit' }, 'Guardar mis datos'));
+
+  // 2) Cambiar contraseña (cierra las demás sesiones y conserva esta)
+  const m2 = msg();
+  const f = el('form', { 'data-form': 'password', onsubmit: async (ev) => {
+    ev.preventDefault(); m2.err.textContent = ''; m2.ok.textContent = '';
     const v = new FormData(f), actual = v.get('actual'), nueva = v.get('nueva');
-    if (nueva.length < 8) { err.textContent = 'La nueva contraseña debe tener al menos 8 caracteres.'; return; }
-    if (nueva !== v.get('repetir')) { err.textContent = 'La nueva contraseña y su confirmación no coinciden.'; return; }
-    try { const j = await api('/auth/cambiar-password', { method: 'POST', body: { actual, nueva } }); token = j.token; try { sessionStorage.setItem('t', j.token); } catch (e) { /* ok */ } f.reset(); okm.textContent = 'Contraseña actualizada. Se cerraron tus otras sesiones.'; }
-    catch (e) { err.textContent = e.message; }
-  } }, campo('Contraseña actual', 'actual', 'current-password'), campo('Nueva contraseña (mínimo 8 caracteres)', 'nueva', 'new-password'), campo('Repite la nueva contraseña', 'repetir', 'new-password'),
-    err, okm, el('div', { class: 'row' }, el('button', { class: 'btn', type: 'submit' }, 'Cambiar contraseña'), el('button', { class: 'btn s', type: 'button', onclick: () => { c.hidden = true; } }, 'Cerrar')));
-  c.replaceChildren(el('h2', {}, 'Mi cuenta'), el('p', { class: 'mu' }, `${user.nombre} · ${user.correo}`), f); c.hidden = false;
+    if (nueva.length < 8) { m2.err.textContent = 'La nueva contraseña debe tener al menos 8 caracteres.'; return; }
+    if (nueva !== v.get('repetir')) { m2.err.textContent = 'La nueva contraseña y su confirmación no coinciden.'; return; }
+    try { const j = await api('/auth/cambiar-password', { method: 'POST', body: { actual, nueva } }); token = j.token; try { sessionStorage.setItem('t', j.token); } catch (e) { /* ok */ } f.reset(); m2.ok.textContent = 'Contraseña actualizada. Las demás sesiones abiertas se cerraron.'; }
+    catch (e) { m2.err.textContent = e.message; }
+  } }, pw('Contraseña actual', 'actual', 'current-password'), pw('Nueva contraseña (mínimo 8 caracteres)', 'nueva', 'new-password'), pw('Repite la nueva contraseña', 'repetir', 'new-password'),
+    m2.err, m2.ok, el('button', { class: 'btn', type: 'submit' }, 'Cambiar contraseña'));
+
+  const partes = [el('h2', {}, 'Mi cuenta'),
+    el('p', { class: 'mu' }, `Aquí puedes consultar y modificar tus datos, tal como lo describe el punto 6 del `, el('a', { href: 'privacidad.html', target: '_blank', rel: 'noopener' }, 'Aviso de privacidad'), '.'),
+    el('h3', {}, 'Mis datos'), fd, el('h3', {}, 'Contraseña'), f];
+
+  if (esCliente) {
+    // 3) Mis tarjetas
+    const m3 = msg(), lista = el('div', { 'data-tarjetas': '1' }), formT = el('div');
+    const cargarT = async () => {
+      try {
+        const { tarjetas } = await api('/tarjetas');
+        lista.replaceChildren(...(tarjetas.length ? tarjetas.map((t) => el('div', { class: 'tarjeta-g' }, el('span', {}, el('b', {}, t.etiqueta), ` · ${t.titular} · vence ${t.vence}`),
+          el('button', { class: 'mini', type: 'button', 'data-quitar-tarjeta': t.id, onclick: async () => { m3.err.textContent = ''; try { await api('/tarjetas/' + t.id, { method: 'DELETE' }); await cargarT(); } catch (e) { m3.err.textContent = e.message; } } }, 'Eliminar')))
+          : [el('p', { class: 'mu' }, 'Todavía no tienes tarjetas guardadas.')]));
+      } catch (e) { lista.replaceChildren(el('p', { class: 'err' }, e.message)); }
+    };
+    const agregar = () => {
+      const mm = msg(), inp = (n, ph, ml, extra) => el('input', { name: n, placeholder: ph, maxlength: ml, required: true, autocomplete: 'off', ...(extra || {}) });
+      const ft = el('form', { 'data-form': 'tarjeta', novalidate: true, onsubmit: async (ev) => {
+        ev.preventDefault(); mm.err.textContent = '';
+        const v = new FormData(ft);
+        try { await api('/tarjetas', { method: 'POST', body: { tarjeta: { titular: v.get('titular'), numero: v.get('numero'), vence: v.get('vence'), cvv: v.get('cvv') } } }); formT.replaceChildren(); await cargarT(); }
+        catch (e) { mm.err.textContent = e.campos ? Object.values(e.campos).join(' ') : e.message; }
+        ft.elements.cvv.value = '';
+      } }, el('label', {}, 'Nombre del titular', inp('titular', 'Como aparece en la tarjeta', 60)), el('label', {}, 'Número de tarjeta', inp('numero', '0000 0000 0000 0000', 23, { inputmode: 'numeric' })),
+        el('div', { class: 'row' }, el('label', { style: 'flex:1' }, 'Vencimiento', inp('vence', 'MM/AA', 7)), el('label', { style: 'flex:1' }, 'CVV (solo para validar)', el('input', { name: 'cvv', type: 'password', inputmode: 'numeric', maxlength: 4, required: true, autocomplete: 'off' }))),
+        el('p', { class: 'mu' }, 'No guardamos tu número completo ni el CVV: solo la marca, los últimos 4 dígitos, el titular y el vencimiento. Para pagar con una tarjeta guardada se te pedirá el CVV.'),
+        mm.err, el('div', { class: 'row' }, el('button', { class: 'btn', type: 'submit' }, 'Guardar tarjeta'), el('button', { class: 'btn s', type: 'button', onclick: () => formT.replaceChildren() }, 'Cancelar')));
+      formT.replaceChildren(ft);
+    };
+    partes.push(el('h3', {}, 'Mis tarjetas'), lista, m3.err, formT, el('button', { class: 'btn s', type: 'button', 'data-agregar-tarjeta': '1', onclick: agregar }, '+ Agregar tarjeta'));
+    cargarT();
+
+    // 4) Privacidad y eliminar cuenta (Cancelación / Oposición)
+    const m4 = msg(), zona = el('div');
+    const pedirBaja = () => {
+      const ff = el('form', { 'data-form': 'eliminar', onsubmit: async (ev) => {
+        ev.preventDefault(); m4.err.textContent = '';
+        try { await api('/auth/eliminar-cuenta', { method: 'POST', body: { password: ff.elements.password.value, confirmar: true } }); alert_ok(); }
+        catch (e) { m4.err.textContent = e.message; }
+      } }, el('p', {}, 'Se borrarán tus datos personales y tus tarjetas guardadas. Se conserva únicamente el registro de ventas, sin datos que te identifiquen. Esta acción no se puede deshacer.'),
+        pw('Escribe tu contraseña para confirmar', 'password', 'current-password'), m4.err,
+        el('div', { class: 'row' }, el('button', { class: 'btn peligro', type: 'submit', 'data-confirmar-eliminar': '1' }, 'Sí, eliminar mi cuenta'), el('button', { class: 'btn s', type: 'button', onclick: () => zona.replaceChildren() }, 'No, conservarla')));
+      zona.replaceChildren(ff);
+    };
+    const alert_ok = () => { c.hidden = true; setSession(null, null); const m = $('#msg'); m.textContent = 'Tu cuenta fue eliminada. Gracias por haber usado EN COMBO.'; m.hidden = false; };
+    partes.push(el('h3', {}, 'Privacidad'),
+      el('p', { class: 'mu' }, perfil.privacidad_aceptada_en ? `Aceptaste el Aviso de privacidad (versión ${perfil.privacidad_version}) el ${new Date(perfil.privacidad_aceptada_en).toLocaleDateString('es-MX')}.` : 'Aún no has aceptado el Aviso de privacidad.'),
+      el('button', { class: 'btn s peligro-s', type: 'button', 'data-eliminar-cuenta': '1', onclick: pedirBaja }, 'Eliminar mi cuenta'), zona);
+  }
+  partes.push(el('div', { class: 'row' }, el('button', { class: 'btn s', type: 'button', onclick: () => { c.hidden = true; } }, 'Cerrar')));
+  c.replaceChildren(...partes);
 }
 $('#btn-cuenta').onclick = abrirCuenta;
 $('#out').onclick = () => { d = nuevoCombo(); setSession(null, null); };

@@ -330,3 +330,11 @@ Al tocar un pedido en el tablero, la ficha muestra **Ingredientes por producto**
 | Conexión | HTTPS hacia el navegador; SSL hacia la base de datos |
 
 Mejoras posibles (no incluidas): cifrar a nivel de campo nombre/teléfono/dirección con una llave propia, y activar la verificación del certificado SSL de la base de datos.
+
+
+## Cambios de la versión 2.1
+
+- **Reportes de ventas:** se quitó el selector «Agrupar por»; la tabla se agrupa sola (por día, semana o mes) según qué tan largo sea el periodo.
+- **Costo unitario por proveedor:** al agregar o editar un proveedor, cada insumo que surte lleva su costo unitario (se sugiere el del inventario y es obligatorio). La cotización de pedidos y solicitudes toma ese costo; si el proveedor no surte ese insumo usa el costo del inventario, y en cada renglón se puede ajustar.
+- **Mi cuenta (derechos ARCO, punto 6 del aviso):** *Acceso* (ver tus datos y la versión del aviso aceptada), *Rectificación* (cambiar nombre, correo —pide contraseña— y contraseña), *Cancelación/Oposición* (eliminar la cuenta: se anonimiza a la persona, se borran tarjetas, avisos, direcciones y dedicatorias, y se conserva solo el registro de ventas; no se puede con pedidos sin entregar) y **Mis tarjetas** (guardar o eliminar; se guarda solo marca, últimos 4, titular y vencimiento, nunca el número completo ni el CVV). Al pagar se puede usar una tarjeta guardada (solo se pide el CVV) o guardar la nueva.
+- **Aviso de privacidad** versión 2026-11.2: ya no menciona el teléfono del cliente (el registro tampoco lo guarda) y el punto 6 explica cómo ejercer cada derecho en «Mi cuenta». Como cambió, quienes ya aceptaron la versión anterior lo aceptan de nuevo.

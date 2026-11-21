@@ -154,3 +154,11 @@ main .mu,main small,main h3,main dt{color:var(--tx2)}
 .modal{max-width:460px;width:100%}
 @media print{.modal-fondo{display:none!important}}
 .acepto a{color:#3F210E;font-weight:600}
+
+.ins-prov{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0}.ins-prov .costo-prov{width:110px}
+
+/* Mi cuenta */
+#cuenta{max-width:560px}#cuenta h3{margin:18px 0 8px}
+.tarjeta-g{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #E9DFC9}
+.btn.peligro{background:#B3261E}.btn.peligro-s{color:#B3261E;border-color:#B3261E}
+#cuenta a{color:#3F210E;font-weight:600}
