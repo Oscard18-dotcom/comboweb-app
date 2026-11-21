@@ -24,7 +24,7 @@ textarea{width:100%}
 :focus-visible{outline:2px solid var(--pri);outline-offset:2px}
 .btn{background:var(--pri);color:var(--onpri);border:0;border-radius:22px;padding:11px 18px;font:inherit;font-weight:600;width:100%;cursor:pointer;min-height:44px}
 .btn.s{background:transparent;color:var(--pri);border:1.5px solid var(--pri)}
-.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:disabled{opacity:1;background:#6A5A4C;border-color:#6A5A4C;color:#F9F1E6;cursor:not-allowed}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.row .btn{width:auto}
 .err{color:var(--err);margin:8px 0 0}.err:empty{display:none}
 .errbox{background:var(--errbox,var(--errbg));color:var(--err);border:1px solid var(--err);border-radius:6px;padding:8px 10px;margin-top:10px}
