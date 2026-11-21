@@ -114,7 +114,7 @@
         if (mi !== seqV) return;
         const max = Math.max(1, ...v.serie.map((x) => x.ventas));
         contenido.replaceChildren(
-          e('p', { class: 'mu' }, `Del ${fd(v.desde)} al ${fd(v.hasta)} · cifras en pesos mexicanos (MXN)`),
+          e('p', { class: 'mu' }, `Del ${fd(v.desde)} al ${fd(v.hasta)}`),
           e('div', { class: 'kp', 'data-ventas-periodo': '1' }, kp('Ingresos totales', mx(v.ventas)), kp('Pedidos', String(v.pedidos)), kp('Gastos totales', mx(v.gastos), v.gastos ? '#B3261E' : ''), kp('Utilidad bruta', mx(v.utilidad), v.utilidad < 0 ? '#B3261E' : '#3E5B3A'), kp('Utilidad neta', mx(v.utilidad_neta), v.utilidad_neta < 0 ? '#B3261E' : '#3E5B3A'), kp('Margen', v.margen_neto_pct + ' %', v.margen_neto_pct < 0 ? '#B3261E' : '')),
           e('div', { class: 'graficas' }, e('div', {}, e('h4', {}, 'Ventas a lo largo del periodo'), graficaLinea(v.serie, v.unidad)), e('div', {}, e('h4', {}, 'Ventas por combo'), graficaDona(v.combos))),
           v.serie.length ? e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, e('th', {}, v.unidad === 'hour' ? 'Hora' : 'Periodo'), e('th', { class: 'n' }, 'Pedidos'), e('th', { class: 'n' }, 'Ventas'), e('th', {}, ''))),
@@ -143,7 +143,7 @@
               e('div', { class: 'card' }, e('small', { class: 'mu' }, 'Ganancia total del día (ventas − compras)'), e('b', { 'data-ganancia-total': '1', style: 'color:' + (gan < 0 ? '#B3261E' : '#3E5B3A') }, mx(gan)))));
         })(),
         panelV,
-        e('div', { class: 'card' }, e('h3', {}, 'Pedidos por estatus'), graficaBarrasH(Object.entries(d.por_estatus).map(([k, v]) => ({ nombre: k, valor: v, color: ST[k] || '#7D756B' })), (n) => String(Math.round(n)))),
+        e('section', { class: 'card', 'data-estatus': '1' }, e('h3', {}, 'Pedidos por estatus'), e('div', { class: 'kp', style: 'margin-bottom:0' }, ...Object.entries(d.por_estatus).map(([k, v]) => e('div', { class: 'card', style: `border-left:6px solid ${ST[k] || '#7D756B'}` }, e('small', { class: 'mu' }, k), e('b', {}, String(v)))))),
         d.pagos_en_revision ? e('div', { class: 'alerta', role: 'alert' }, e('b', {}, `⚠ ${d.pagos_en_revision} pago(s) cobrado(s) sin pedido: requieren reembolso o atención manual desde el panel de la pasarela de pago.`),
           ...d.pagos_revision.map((x) => e('div', {}, `${x.cliente} · ${mx(x.total)} · ${x.proveedor} · ref. ${x.referencia || '—'} · ${new Date(x.creado_en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}`))) : null,
         fallos.length ? e('div', { class: 'alerta', role: 'alert' }, e('b', {}, `⚠ ${fallos.length} aviso(s) por correo no se han podido enviar`),
@@ -196,7 +196,7 @@
         const d = await api(url());
         if (tipo === 'ventas') {
           agrActual = d.agrupar;
-          resultado.replaceChildren(e('div', { class: 'card tw' }, ...titulo('Ventas por periodo', `Del ${fd(d.desde)} al ${fd(d.hasta)} · cifras en pesos mexicanos (MXN)`),
+          resultado.replaceChildren(e('div', { class: 'card tw' }, ...titulo('Ventas por periodo', `Del ${fd(d.desde)} al ${fd(d.hasta)}`),
             d.periodos.length ? e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, th('Periodo'), th('Pedidos', 1), th('Ventas', 1), th('Costo de insumos', 1), th('Utilidad bruta', 1))),
               e('tbody', {}, ...d.periodos.map((x) => e('tr', {}, e('td', {}, etiqueta(x.periodo)), e('td', { class: 'n' }, String(x.pedidos)), mon(e, x.ventas), mon(e, x.costo), mon(e, x.utilidad))),
                 e('tr', { class: 'total' }, e('td', {}, 'Suma'), e('td', { class: 'n' }, String(d.totales.pedidos)), mon(e, d.totales.ventas), mon(e, d.totales.costo), mon(e, d.totales.utilidad))))
