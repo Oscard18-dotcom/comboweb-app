@@ -180,6 +180,8 @@ router.patch('/usuarios/:id', wrap(async (req, res) => {
   if (activo !== undefined && typeof activo !== 'boolean') return res.status(400).json({ error: 'Datos inválidos.' });
   const t = (await db.query('SELECT rol,activo FROM usuarios WHERE id=$1', [id])).rows[0];
   if (!t) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (t.rol === 'cliente' && rol !== undefined && rol !== 'cliente') return res.status(403).json({ error: 'Los clientes siempre son clientes: no se les puede cambiar el rol.' });
+  if (t.rol !== 'cliente' && rol === 'cliente') return res.status(403).json({ error: 'Una cuenta del personal no puede convertirse en cliente.' });
   const nuevoRol = rol ?? t.rol, nuevoActivo = activo ?? t.activo;
   if (t.rol === 'admin' && t.activo && (nuevoRol !== 'admin' || !nuevoActivo)) {
     const { rows } = await db.query("SELECT count(*)::int AS n FROM usuarios WHERE rol='admin' AND activo AND id<>$1", [id]);
@@ -195,6 +197,8 @@ router.patch('/usuarios/:id/password', wrap(async (req, res) => {
   const id = paramId(req), { password } = req.body || {};
   if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
   if (!isPassword(password)) return res.status(400).json({ error: 'La contraseña debe tener entre 8 y 72 caracteres.' });
+  const obj = (await db.query('SELECT rol FROM usuarios WHERE id=$1', [id])).rows[0];
+  if (obj && obj.rol === 'cliente') return res.status(403).json({ error: 'No se puede restablecer la contraseña de un cliente. Si la olvidó, puede recuperarla con “¿Olvidaste tu contraseña?”.' });
   const { rows } = await db.query('UPDATE usuarios SET password_hash=$2, token_version=token_version+1 WHERE id=$1 RETURNING id', [id, await bcrypt.hash(password, 12)]);
   if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado.' });
   res.json({ ok: true });

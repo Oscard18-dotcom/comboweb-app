@@ -28,9 +28,9 @@
       const yo = H.usuario.id;
       tabla.replaceChildren(e('table', {}, e('thead', {}, e('tr', {}, ['Nombre', 'Correo', 'Rol', 'Estado', 'Acciones'].map((x) => e('th', {}, x)))),
         e('tbody', {}, filas.map((u) => {
-          const sel = e('select', { 'aria-label': `Rol de ${u.nombre}`, onchange: (ev) => cambiarRol(u, ev.target.value, ev.target) }, ...['cocina', 'almacen', 'admin', 'cliente'].map((r) => e('option', { value: r, selected: u.rol === r }, ROL[r])));
-          return e('tr', {}, e('td', {}, u.nombre + (u.id === yo ? ' (tú)' : '')), e('td', {}, u.correo), e('td', {}, sel), e('td', {}, u.activo ? chipC('Activo', '#3E5B3A') : chipC('Inactivo', '#7D756B')),
-            e('td', { class: 'acc' }, u.activo ? null : e('button', { class: 'mini', type: 'button', onclick: () => confirmarEstado(u) }, 'Reactivar'), ['cocina', 'almacen'].includes(u.rol) ? e('button', { class: 'mini', type: 'button', 'data-editar-correo': u.id, onclick: () => formCorreo(u) }, 'Editar correo') : null, e('button', { class: 'mini', type: 'button', onclick: () => formClave(u) }, 'Restablecer contraseña'),
+          const sel = e('select', { 'aria-label': `Rol de ${u.nombre}`, onchange: (ev) => cambiarRol(u, ev.target.value, ev.target) }, ...['cocina', 'almacen', 'admin'].map((r) => e('option', { value: r, selected: u.rol === r }, ROL[r])));
+          return e('tr', {}, e('td', {}, u.nombre + (u.id === yo ? ' (tú)' : '')), e('td', {}, u.correo), e('td', {}, u.rol === 'cliente' ? ROL.cliente : sel), e('td', {}, u.activo ? chipC('Activo', '#3E5B3A') : chipC('Inactivo', '#7D756B')),
+            e('td', { class: 'acc' }, u.activo ? null : e('button', { class: 'mini', type: 'button', onclick: () => confirmarEstado(u) }, 'Reactivar'), ['cocina', 'almacen'].includes(u.rol) ? e('button', { class: 'mini', type: 'button', 'data-editar-correo': u.id, onclick: () => formCorreo(u) }, 'Editar correo') : null, u.rol === 'cliente' ? null : e('button', { class: 'mini', type: 'button', onclick: () => formClave(u) }, 'Restablecer contraseña'),
               ['cocina', 'almacen'].includes(u.rol) ? e('button', { class: 'mini peligro-s', type: 'button', 'aria-label': `Eliminar la cuenta de ${u.nombre}`, onclick: () => confirmarEliminar(u) }, 'Eliminar') : null));
         }))), filas.length ? null : e('p', { class: 'mu', style: 'padding:8px' }, 'No hay usuarios que coincidan.'));
     }

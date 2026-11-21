@@ -90,9 +90,14 @@ const concreta = (p) => p.replace('/checkout/:id', '/checkout/00000000-0000-4000
     r = await call('PATCH', `/api/admin/usuarios/${U.id}/password`, { password: 'corta' }, admin); t('restablecer con contraseña corta → 400', r.s === 400);
     r = await call('PATCH', '/api/admin/usuarios/abc/password', { password: 'restablecida-99' }, admin); t('restablecer con id inválido → 400', r.s === 400);
     r = await call('PATCH', '/api/admin/usuarios/999999/password', { password: 'restablecida-99' }, admin); t('restablecer a un usuario inexistente → 404', r.s === 404);
-    r = await call('PATCH', `/api/admin/usuarios/${U.id}/password`, { password: 'restablecida-99' }, admin); t('el administrador restablece la contraseña', r.s === 200);
+    r = await call('PATCH', `/api/admin/usuarios/${U.id}/password`, { password: 'restablecida-99' }, admin); t('a un cliente NO se le puede restablecer la contraseña desde el admin → 403', r.s === 403 && (await login(U.correo, 'otra-clave-123')).s === 200);
+    r = await call('PATCH', `/api/admin/usuarios/${U.id}`, { rol: 'almacen' }, admin); t('a un cliente no se le puede cambiar el rol → 403', r.s === 403 && (await q('SELECT rol FROM usuarios WHERE id=$1', [U.id]))[0].rol === 'cliente');
+    await db.query("UPDATE usuarios SET rol='almacen' WHERE id=$1", [U.id]);   // para probar el restablecimiento con una cuenta del personal
+    r = await call('PATCH', `/api/admin/usuarios/${U.id}`, { rol: 'cliente' }, admin); t('una cuenta del personal no puede convertirse en cliente → 403', r.s === 403);
+    r = await call('PATCH', `/api/admin/usuarios/${U.id}/password`, { password: 'restablecida-99' }, admin); t('el administrador restablece la contraseña (cuenta del personal)', r.s === 200);
     t('…y se cierran todas las sesiones de ese usuario', (await call('GET', '/api/auth/me', undefined, tokNuevo)).s === 401);
     t('…y entra con la contraseña restablecida', (await login(U.correo, 'restablecida-99')).s === 200);
+    await db.query("UPDATE usuarios SET rol='cliente' WHERE id=$1", [U.id]);
 
     /* ===== Tokens manipulados ===== */
     const valido = C.token, partes = valido.split('.');
