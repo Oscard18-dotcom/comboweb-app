@@ -45,8 +45,6 @@ const chk = (nivel, texto, detalle = '') => res.push({ nivel, texto, detalle });
       prueba ? chk('aviso', `Hay ${prueba} cuenta(s) de prueba activa(s) (@encombo.test)`, 'Desactívalas en Usuarios o cámbiales la contraseña antes de abrir el sistema al público') : chk('ok', 'No hay cuentas de prueba activas');
       const cat = (await db.query("SELECT count(*)::int n FROM productos p WHERE p.activo AND EXISTS (SELECT 1 FROM recetas r WHERE r.producto_id=p.id)")).rows[0].n;
       cat ? chk('ok', `Catálogo: ${cat} producto(s) activo(s) con receta`) : chk('fallo', 'No hay productos activos con receta', 'Los clientes no podrían comprar nada');
-      const pres = (await db.query('SELECT count(*)::int n FROM presentaciones WHERE activo')).rows[0].n;
-      pres ? chk('ok', `${pres} presentación(es) activa(s)`) : chk('fallo', 'No hay presentaciones activas');
     }
   } catch (e) { chk('fallo', 'No se pudo revisar la base de datos', e.message); }
   for (const r of res) console.log(`${marca[r.nivel]} ${r.texto}${r.detalle ? ' — ' + r.detalle : ''}`);

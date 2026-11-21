@@ -4,12 +4,25 @@ const { auth, roles } = require('../middleware/auth');
 const { wrap, paramId } = require('../util');
 const compras = require('../services/compras');
 
-router.use(auth, roles('admin'));
+// Almacén puede ver y hacer SOLICITUDES de reabastecimiento; aprobar, recibir y cancelar son solo del administrador
+router.use(auth, roles('almacen', 'admin'));
+const soloAdmin = roles('admin');
 
 // Errores "de negocio" del servicio: se muestran tal cual; los demás van al manejador global
 const manejar = (fn) => wrap(async (req, res) => {
   try { await fn(req, res); } catch (e) { if (e.publico) return res.status(e.status).json({ error: e.publico }); throw e; }
 });
+
+/* Proveedores activos (lo mínimo para elegir a quién pedir; el catálogo completo de proveedores es solo del administrador) */
+router.get('/proveedores', manejar(async (req, res) => {
+  const { rows } = await db.query(
+    `SELECT p.id,p.nombre,${req.user.rol === 'admin' ? 'p.correo,' : ''}COALESCE((SELECT json_agg(json_build_object('id',pi.insumo_id)) FROM proveedor_insumos pi WHERE pi.proveedor_id=p.id),'[]'::json) AS insumos
+       FROM proveedores p WHERE p.activo ORDER BY lower(p.nombre)`);
+  res.json({ proveedores: rows });
+}));
+
+/* Cotización: precio y total de lo que se va a pedir (sin guardar nada) */
+router.post('/cotizar', manejar(async (req, res) => { res.json(await compras.cotizar(db, req.body)); }));
 
 /* Sugerencias de reposición: insumos en reorden (stock <= mínimo). Si el proveedor tiene lista de insumos, solo esos. */
 router.get('/sugerencias', manejar(async (req, res) => {
@@ -25,7 +38,7 @@ router.get('/sugerencias', manejar(async (req, res) => {
 }));
 
 router.get('/', manejar(async (req, res) => {
-  const estado = ['enviado', 'recibido', 'cancelado'].includes(req.query.estado) ? req.query.estado : null;
+  const estado = ['solicitado', 'rechazado', 'enviado', 'recibido', 'cancelado'].includes(req.query.estado) ? req.query.estado : null;
   res.json({ pedidos: await compras.lista(estado) });
 }));
 
@@ -39,13 +52,25 @@ router.get('/:id', manejar(async (req, res) => {
 
 router.post('/', manejar(async (req, res) => { res.status(201).json({ pedido: await compras.crear(req.user, req.body) }); }));
 
-router.post('/:id/recibir', manejar(async (req, res) => {
+router.post('/:id/aprobar', soloAdmin, manejar(async (req, res) => {
+  const id = paramId(req);
+  if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
+  res.json({ pedido: await compras.aprobar(id, req.user) });
+}));
+
+router.post('/:id/rechazar', soloAdmin, manejar(async (req, res) => {
+  const id = paramId(req);
+  if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
+  res.json({ pedido: await compras.rechazar(id, req.user, (req.body || {}).motivo) });
+}));
+
+router.post('/:id/recibir', soloAdmin, manejar(async (req, res) => {
   const id = paramId(req);
   if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
   res.json({ pedido: await compras.recibir(id, req.user) });
 }));
 
-router.post('/:id/cancelar', manejar(async (req, res) => {
+router.post('/:id/cancelar', soloAdmin, manejar(async (req, res) => {
   const id = paramId(req);
   if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
   res.json({ pedido: await compras.cancelar(id, req.user) });

@@ -6,14 +6,14 @@ async function call(m,p,body,tok){const r=await fetch(B+p,{method:m,headers:{'Co
 function t(name,cond,extra=''){if(cond){pass++;console.log('PASS',name)}else{fail++;console.log('FAIL',name,extra)}}
 (async()=>{
  let r=await call('GET','/api/catalogo');
- t('catálogo público: 6 productos y 3 presentaciones',r.s===200&&r.j.productos.length===6&&r.j.presentaciones.length===3);
- r=await call('POST','/api/auth/register',{nombre:'Ana López',correo:`Ana${R}@Correo.com`,password:'secreta123'});
+ t('catálogo público: 6 productos y sus combos (sin tamaños de caja)',r.s===200&&r.j.productos.length===6&&Array.isArray(r.j.combos)&&r.j.combos.length>=4&&!r.j.presentaciones);
+ r=await call('POST','/api/auth/register',{ acepta_privacidad: true,nombre:'Ana López',correo:`Ana${R}@Correo.com`,password:'secreta123'});
  t('registro de cliente',r.s===201&&r.j.usuario.rol==='cliente'&&r.j.token);const tc=r.j.token;
- r=await call('POST','/api/auth/register',{nombre:'Ana López',correo:`ana${R}@correo.com`,password:'secreta123'});
+ r=await call('POST','/api/auth/register',{ acepta_privacidad: true,nombre:'Ana López',correo:`ana${R}@correo.com`,password:'secreta123'});
  t('correo duplicado (sin importar mayúsculas) → 409',r.s===409);
- r=await call('POST','/api/auth/register',{nombre:'X',correo:'malcorreo',password:'123'});
+ r=await call('POST','/api/auth/register',{ acepta_privacidad: true,nombre:'X',correo:'malcorreo',password:'123'});
  t('datos inválidos → 400',r.s===400);
- r=await call('POST','/api/auth/register',{nombre:'Intruso',correo:`intruso${R}@correo.com`,password:'secreta123',rol:'admin'});
+ r=await call('POST','/api/auth/register',{ acepta_privacidad: true,nombre:'Intruso',correo:`intruso${R}@correo.com`,password:'secreta123',rol:'admin'});
  t('registro público ignora rol=admin (queda cliente)',r.s===201&&r.j.usuario.rol==='cliente');
  r=await call('POST','/api/auth/login',{correo:'admin@encombo.test',password:process.env.SEED_PASSWORD});
  t('login admin',r.s===200&&r.j.usuario.rol==='admin');const ta=r.j.token;
@@ -36,7 +36,6 @@ function t(name,cond,extra=''){if(cond){pass++;console.log('PASS',name)}else{fai
  r=await call('POST','/api/admin/productos',{nombre:'Cupcake',precio:20},ta);t('nombre duplicado → 409',r.s===409);
  r=await call('PUT',`/api/admin/productos/${pid}`,{nombre:'Muffin'+R,descripcion:'De arándano',precio:30},ta);t('editar precio',r.s===200&&Number(r.j.producto.precio)===30);
  r=await call('GET','/api/catalogo');t('producto inactivo no aparece en el catálogo',!r.j.productos.some(p=>p.nombre==='Muffin'+R));
- r=await call('PUT','/api/admin/presentaciones/1',{precio:32},ta);t('editar precio de presentación',r.s===200&&Number(r.j.presentacion.precio)===32);
  r=await call('POST','/api/admin/usuarios',{nombre:'Cocinero Nuevo',correo:`nuevo${R}@encombo.test`,password:'cocina12345',rol:'cocina'},ta);
  t('admin da de alta personal',r.s===201&&r.j.usuario.rol==='cocina');const uid=r.j.usuario.id;
  r=await call('POST','/api/admin/usuarios',{nombre:'X Y',correo:'x@encombo.test',password:'cocina12345',rol:'superadmin'},ta);t('rol inválido → 400',r.s===400);

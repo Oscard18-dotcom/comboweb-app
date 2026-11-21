@@ -25,7 +25,7 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
   try {
     const login = async (c) => (await call('POST', '/api/auth/login', { correo: c, password: process.env.SEED_PASSWORD })).j.token;
     const admin = await login('admin@encombo.test'), almacen = await login('almacen@encombo.test'), cocina = await login('cocina@encombo.test');
-    const rc = await call('POST', '/api/auth/register', { nombre: 'Cliente Sprint4', correo: `s4${R}@prueba.test`, password: 'secreta123' });
+    const rc = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre: 'Cliente Sprint4', correo: `s4${R}@prueba.test`, password: 'secreta123' });
     const cliente = rc.j.token; clientes.push(rc.j.usuario.id);
     const base = svc.addDays(svc.todayMX(), 10 + Math.floor(Math.random() * 60)); const dia = (k) => svc.addDays(base, k);
     const lista = async () => (await call('GET', '/api/inventario?inactivos=1', undefined, almacen)).j.insumos;
@@ -35,7 +35,7 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
     let r = await call('GET', '/api/inventario'); t('inventario sin sesión → 401', r.s === 401);
     r = await call('GET', '/api/inventario', undefined, cliente); t('cliente en inventario → 403', r.s === 403);
     r = await call('GET', '/api/inventario', undefined, cocina); t('cocina en inventario → 403', r.s === 403);
-    r = await call('GET', '/api/inventario', undefined, almacen); t('encargado de almacén ve el inventario', r.s === 200 && r.j.insumos.length >= 10);
+    r = await call('GET', '/api/inventario', undefined, almacen); t('encargado de almacén ve el inventario', r.s === 200 && r.j.insumos.length >= 8);
     r = await call('GET', '/api/inventario', undefined, admin); t('administrador ve el inventario', r.s === 200);
     const harina = await porNombre('Harina');
     t('cada insumo trae estado de reorden y uso en recetas', typeof harina.en_reorden === 'boolean' && harina.en_uso >= 3);

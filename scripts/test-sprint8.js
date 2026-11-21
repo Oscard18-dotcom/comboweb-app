@@ -41,7 +41,7 @@ async function arrancar(env, puerto) {
   try {
     const login = async (c) => (await call('POST', '/api/auth/login', { correo: c, password: process.env.SEED_PASSWORD })).j.token;
     const admin = await login('admin@encombo.test'), almacen = await login('almacen@encombo.test'), cocina = await login('cocina@encombo.test');
-    const reg = await call('POST', '/api/auth/register', { nombre: 'Cliente P8', correo: `p8${R}@prueba.test`, password: 'secreta123' });
+    const reg = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre: 'Cliente P8', correo: `p8${R}@prueba.test`, password: 'secreta123' });
     clientes.push(reg.j.usuario.id); const cli = reg.j.token;
     const harina = (await q("SELECT id FROM insumos WHERE nombre='Harina'"))[0].id;
 
@@ -108,7 +108,7 @@ async function arrancar(env, puerto) {
     t('el servidor arranca en producción con MODO_DEMO=true', S.ok, S.salida());
     const U = `http://localhost:${puerto}`;
     r = await call('GET', '/api/salud', undefined, null, U); t('…/api/salud informa modo_demo = true', r.j.modo_demo === true);
-    const reg2 = await call('POST', '/api/auth/register', { nombre: 'Persona Anónima', correo: `anon${R}@prueba.test`, password: 'secreta123' }, null, U); clientes.push(reg2.j.usuario && reg2.j.usuario.id);
+    const reg2 = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre: 'Persona Anónima', correo: `anon${R}@prueba.test`, password: 'secreta123' }, null, U); clientes.push(reg2.j.usuario && reg2.j.usuario.id);
     t('…cualquier persona puede crear su cuenta', reg2.s === 201 && reg2.j.usuario.rol === 'cliente');
     const dia2 = svc.addDays(svc.todayMX(), 40 + Math.floor(Math.random() * 30));
     const ck2 = await call('POST', '/api/pedidos/checkout', { items: [{ producto_id: cat.productos[0].id, cantidad: 1 }], presentacion_id: pres, fecha: dia2, hora: '11:00', direccion: { cp: '91190', colonia: 'Las Flores', calle: 'Calle de Prueba', num_ext: '12' } }, reg2.j.token, U);
@@ -149,7 +149,7 @@ async function arrancar(env, puerto) {
       x = run(['scripts/preparar-nube.js'], envT);
       t('preparar-nube en una base vacía: crea tablas, datos de ejemplo y administrador', x.code === 0 && /Tablas listas/.test(x.out) && /Datos iniciales cargados/.test(x.out) && /Administrador creado/.test(x.out), x.out.slice(-300));
       const cuenta = async (sql) => (await T.query(sql)).rows[0].n;
-      t('…hay 10 insumos, 6 productos con receta y 3 presentaciones', await cuenta('SELECT count(*)::int n FROM insumos') === 10 && await cuenta('SELECT count(*)::int n FROM productos') === 6 && await cuenta('SELECT count(*)::int n FROM recetas') === 6 && await cuenta('SELECT count(*)::int n FROM presentaciones') === 3);
+      t('…hay 8 insumos, 6 productos con receta y ya no hay tamaños de caja', await cuenta('SELECT count(*)::int n FROM insumos') === 8 && await cuenta('SELECT count(*)::int n FROM productos') === 6 && await cuenta('SELECT count(*)::int n FROM recetas') === 6 && await cuenta('SELECT count(*)::int n FROM presentaciones') === 0 && await cuenta("SELECT count(*)::int n FROM insumos WHERE nombre='Caja'") === 1);
       t('…NO se crean cuentas de prueba públicas (@encombo.test): solo el administrador', await cuenta('SELECT count(*)::int n FROM usuarios') === 1 && await cuenta("SELECT count(*)::int n FROM usuarios WHERE correo LIKE '%@encombo.test'") === 0 && await cuenta("SELECT count(*)::int n FROM usuarios WHERE rol='admin'") === 1);
       t('…se cargan los 4 combos de ejemplo (Mini, Clásico, Grande y Pareja)', await cuenta('SELECT count(*)::int n FROM combos') === 4);
       await T.query('DELETE FROM combos');

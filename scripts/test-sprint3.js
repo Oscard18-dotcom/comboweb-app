@@ -29,7 +29,7 @@ const hay = (r, codigo) => (r.j.errores || []).some((e) => e.codigo === codigo);
   try {
     const base = svc.addDays(svc.todayMX(), 10 + Math.floor(Math.random() * 60));
     const dia = (k) => svc.addDays(base, k);
-    const reg = async (n) => { const r = await call('POST', '/api/auth/register', { nombre: 'Cliente ' + n, correo: `c${n}${R}@prueba.test`, password: 'secreta123' }); clientes.push(r.j.usuario.id); return r.j.token; };
+    const reg = async (n) => { const r = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre: 'Cliente ' + n, correo: `c${n}${R}@prueba.test`, password: 'secreta123' }); clientes.push(r.j.usuario.id); return r.j.token; };
     const tA = await reg('A'), tB = await reg('B');
     const admin = (await call('POST', '/api/auth/login', { correo: 'admin@encombo.test', password: process.env.SEED_PASSWORD })).j.token;
     const cat = (await call('GET', '/api/catalogo')).j;

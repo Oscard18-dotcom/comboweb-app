@@ -6,7 +6,7 @@ const combosSvc = require('./combos');
 const HORAS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
 const CAPACIDAD = () => Number(process.env.SLOT_CAPACITY || 2); // pedidos máximos por horario
 const DIAS_MIN = () => Number(process.env.MIN_DAYS_AHEAD || 0);  // 0 = se puede pedir para hoy mismo
-const HORAS_MIN = () => Number(process.env.MIN_HOURS_AHEAD ?? 2); // para pedidos de hoy: tiempo de preparación (horas)
+const HORAS_MIN = () => Number(process.env.MIN_HOURS_AHEAD ?? 1); // para pedidos de hoy: tiempo de preparación (horas)
 const DIAS_MAX = 90;
 const cents = (v) => Math.round(Number(v) * 100);
 
@@ -104,7 +104,7 @@ async function validar(q, b = {}) {
   else fechaOk = true;
   const horaOk = HORAS.includes(b.hora);
   if (!horaOk) err('hora', 'hora_invalida', `Elige una hora de entrega entre ${HORAS[0]} y ${HORAS[HORAS.length - 1]}.`);
-  else if (fechaOk && !horaAlcanzable(b.fecha, b.hora)) err('hora', 'hora_pasada', `Para hoy elige una hora con al menos ${HORAS_MIN()} horas de anticipación.`);
+  else if (fechaOk && !horaAlcanzable(b.fecha, b.hora)) err('hora', 'hora_pasada', `Para hoy elige una hora con al menos ${HORAS_MIN()} ${HORAS_MIN() === 1 ? 'hora' : 'horas'} de anticipación.`);
 
   let detalle = null, comboElegido = null;
   if (itemsOk) {

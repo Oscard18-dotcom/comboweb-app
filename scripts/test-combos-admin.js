@@ -25,7 +25,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
   try {
     const login = async (c) => (await call('POST', '/api/auth/login', { correo: c, password: process.env.SEED_PASSWORD })).j.token;
     const admin = await login('admin@encombo.test'), cocina = await login('cocina@encombo.test'), almacen = await login('almacen@encombo.test');
-    const r0 = await call('POST', '/api/auth/register', { nombre: 'Cliente CRUD', correo: `crud${R}@prueba.test`, password: 'secreta123' });
+    const r0 = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre: 'Cliente CRUD', correo: `crud${R}@prueba.test`, password: 'secreta123' });
     clientes.push(r0.j.usuario.id); const cli = r0.j.token;
     const cat0 = (await call('GET', '/api/catalogo')).j;
     const P = (n) => cat0.productos.find((p) => p.nombre === n);

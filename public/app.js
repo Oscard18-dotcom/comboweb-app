@@ -324,7 +324,28 @@ async function descargar(path, nombre) {
 function card(parent, nombre, detalle, precio) {
   parent.append(el('div', { class: 'item' }, el('b', {}, nombre), el('small', {}, detalle || ''), precio == null ? null : el('span', { class: 'p' }, money(precio))));
 }
+/* Aviso de privacidad: quien ya tenía cuenta (o si el aviso cambió) debe aceptarlo antes de usar la tienda */
+function pedirPrivacidad() {
+  let m = document.getElementById('privacidad-modal');
+  if (!user || !user.privacidad_pendiente) { if (m) m.remove(); return; }
+  if (m) return;
+  const err = el('p', { class: 'err', role: 'alert' }), ck = el('input', { type: 'checkbox', id: 'acepto-priv' });
+  const ok = el('button', { class: 'btn', type: 'button', 'data-aceptar-privacidad': '1', onclick: async () => {
+    err.textContent = '';
+    if (!ck.checked) { err.textContent = 'Marca la casilla para aceptar el Aviso de privacidad.'; return; }
+    try { const j = await api('/auth/aceptar-privacidad', { method: 'POST', body: { acepto: true } }); user = j.usuario; try { sessionStorage.setItem('u', JSON.stringify(user)); } catch (e2) { /* sin almacenamiento */ } pedirPrivacidad(); }
+    catch (e) { err.textContent = e.message; }
+  } }, 'Aceptar y continuar');
+  m = el('div', { id: 'privacidad-modal', class: 'modal-fondo', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'priv-t' },
+    el('div', { class: 'card modal' }, el('h3', { id: 'priv-t' }, 'Aviso de privacidad'),
+      el('p', {}, 'Para seguir usando EN COMBO necesitamos que leas y aceptes cómo cuidamos tus datos personales (nombre, correo, teléfono y dirección de entrega).'),
+      el('p', {}, el('a', { href: 'privacidad.html', target: '_blank', rel: 'noopener' }, 'Leer el Aviso de privacidad completo')),
+      el('label', { class: 'chk acepto' }, ck, el('span', {}, 'He leído y acepto el Aviso de privacidad')), err,
+      el('div', { class: 'row' }, ok, el('button', { class: 'btn s', type: 'button', onclick: () => { m.remove(); setSession(null, null); } }, 'No acepto (cerrar sesión)'))));
+  document.body.append(m);
+}
 function paint() {
+  pedirPrivacidad();
   const cli = !!user && user.rol === 'cliente', staff = !!user && !cli;
   $('#who').textContent = user ? user.nombre + ' · ' + ROL[user.rol] : '';
   $('#out').hidden = !user; $('#btn-cuenta').hidden = !user; if (!user) $('#cuenta').hidden = true; $('#auth').hidden = !!user; $('#nav').hidden = !cli; $('#staff').hidden = !staff;
@@ -345,7 +366,7 @@ function paint() {
 for (const f of [$('#f-login'), $('#f-reg')]) {
   f.addEventListener('submit', async (e) => {
     e.preventDefault(); $('#err').textContent = '';
-    try { const j = await api(f.dataset.path, { method: 'POST', body: Object.fromEntries(new FormData(f)) }); f.reset(); setSession(j.token, j.usuario); }
+    try { const body = Object.fromEntries(new FormData(f)); if (f.id === 'f-reg') body.acepta_privacidad = f.elements.acepta_privacidad.checked; const j = await api(f.dataset.path, { method: 'POST', body }); f.reset(); setSession(j.token, j.usuario); }
     catch (err) { $('#err').textContent = err.message; }
   });
 }

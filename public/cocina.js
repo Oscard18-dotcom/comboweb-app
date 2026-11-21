@@ -40,6 +40,31 @@ Personal.registrar('tab', 'Tablero de pedidos', ['cocina', 'admin'], 2, (cont, H
       e('span', { class: 'dir' }, p.direccion ? `📍 ${p.direccion.calle} ${p.direccion.num_ext}, Col. ${p.direccion.colonia}` : '📍 Sin dirección registrada'), p.dedicatoria ? e('span', { class: 'ded' }, '🎂 ' + p.dedicatoria) : null,
       accion ? e('button', { class: 'btn', type: 'button', onclick: (ev) => { ev.stopPropagation(); avanzar(p, siguiente, ev.currentTarget); } }, accion) : null);
   }
+  /* Ticket de compra: se arma en un bloque que solo se ve al imprimir */
+  const mxn = (n) => Number(n).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+  async function imprimirTicket(p, btn) {
+    btn.disabled = true; err.replaceChildren();
+    try {
+      const t = (await api(`/cocina/pedidos/${p.id}/ticket`)).ticket;
+      const fila = (a, b, cls) => e('div', { class: 'tk-fila' + (cls ? ' ' + cls : '') }, e('span', {}, a), e('span', {}, b));
+      const d = t.entrega.direccion;
+      let caja = document.getElementById('ticket-print');
+      if (!caja) { caja = document.createElement('div'); caja.id = 'ticket-print'; document.body.append(caja); }
+      caja.replaceChildren(e('div', { class: 'ticket' },
+        e('h2', {}, 'EN COMBO'), e('p', { class: 'tk-c' }, 'Ticket de compra'),
+        fila('Folio', t.folio), fila('Fecha de compra', new Date(t.creado_en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })), fila('Cliente', t.cliente),
+        fila('Entrega', `${fd(t.entrega.fecha)} ${t.entrega.hora} h`), d ? e('p', { class: 'tk-dir' }, `${d.calle} ${d.num_ext}, Col. ${d.colonia}, C.P. ${d.cp}`) : null,
+        t.combo ? fila('Combo', t.combo) : null, e('hr'),
+        ...t.items.map((i) => fila(`${i.cantidad} × ${i.nombre}`, mxn(i.subtotal))),
+        t.presentacion ? fila(t.presentacion.nombre, mxn(t.presentacion.precio)) : null, e('hr'),
+        fila('TOTAL', mxn(t.total), 'tk-total'), t.pago ? fila('Pago', (t.pago.estado === 'aprobado' ? 'Aprobado' : t.pago.estado) + (t.pago.tarjeta ? ' · ' + t.pago.tarjeta : '')) : null,
+        t.dedicatoria ? e('p', { class: 'tk-dir' }, 'Dedicatoria: ' + t.dedicatoria) : null, e('p', { class: 'tk-c' }, '¡Gracias por tu compra!')));
+      document.body.classList.add('print-ticket');
+      const quitar = () => { document.body.classList.remove('print-ticket'); window.removeEventListener('afterprint', quitar); };
+      window.addEventListener('afterprint', quitar);
+      window.print();
+    } catch (er) { err.replaceChildren(e('div', {}, er.message)); } finally { btn.disabled = false; }
+  }
   function pintar() {
     tablero.replaceChildren(...COLS.map(([est, color, accion, sig]) => {
       const l = datos.pedidos.filter((p) => p.estatus === est);
@@ -47,7 +72,7 @@ Personal.registrar('tab', 'Tablero de pedidos', ['cocina', 'admin'], 2, (cont, H
     }));
     if (!datos.pedidos.length) tablero.append(e('p', { class: 'mu' }, 'No hay pedidos para este día.'));
     const p = datos.pedidos.find((x) => x.id === sel);
-    ficha.replaceChildren(...(p ? [e('div', { class: 'card' }, e('h3', {}, `Ficha técnica · ${p.folio}`), chipC(p.estatus, (COLS.find((c) => c[0] === p.estatus) || [])[1] || '#7D756B'),
+    ficha.replaceChildren(...(p ? [e('div', { class: 'card' }, e('h3', {}, `Ficha técnica · ${p.folio}`), e('button', { class: 'btn s noprint', style: 'width:auto', type: 'button', 'data-ticket': '1', onclick: (ev) => imprimirTicket(p, ev.currentTarget) }, '🧾 Imprimir ticket de compra'), ' ', chipC(p.estatus, (COLS.find((c) => c[0] === p.estatus) || [])[1] || '#7D756B'),
       e('dl', {}, e('dt', {}, 'Cliente'), e('dd', {}, p.cliente), e('dt', {}, 'Entrega'), e('dd', {}, `${fd(p.fecha)} a las ${p.hora} h`),
         e('dt', {}, 'Dirección'), e('dd', {}, p.direccion ? [`${p.direccion.calle} ${p.direccion.num_ext}${p.direccion.num_int ? ' int. ' + p.direccion.num_int : ''}`, e('br'), `Col. ${p.direccion.colonia}`, e('br'), `C.P. ${p.direccion.cp} · ${p.direccion.municipio}${p.direccion.estado ? ', ' + p.direccion.estado : ''}`] : 'Sin dirección registrada (pedido anterior)'),
         p.direccion && p.direccion.referencias ? [e('dt', {}, 'Referencias'), e('dd', {}, p.direccion.referencias)] : null,

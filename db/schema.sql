@@ -283,3 +283,60 @@ UPDATE pedidos SET combo_nombre = 'Combo Clásico' WHERE combo = 'mediano' AND c
 -- ===== Pasarela simulada con tarjeta =====
 -- Del pago con tarjeta solo se guarda la marca y los últimos 4 dígitos (nunca el número completo ni el CVV)
 ALTER TABLE pagos ADD COLUMN IF NOT EXISTS tarjeta VARCHAR(40);
+
+-- ===== Sprint 11 =====
+-- (1) Caja de un solo tamaño: las cajas chica/mediana/grande se unifican en un único insumo "Caja".
+--     Se suma su existencia, se dejan movimientos de traspaso y los tamaños viejos se archivan (el historial se conserva).
+DO $$
+DECLARE caja_id INTEGER; r RECORD;
+BEGIN
+  IF EXISTS (SELECT 1 FROM insumos WHERE nombre IN ('Caja chica','Caja mediana','Caja grande') AND activo) THEN
+    SELECT id INTO caja_id FROM insumos WHERE nombre = 'Caja';
+    IF caja_id IS NULL THEN
+      INSERT INTO insumos(nombre, unidad, stock, stock_minimo, costo_unitario)
+        SELECT 'Caja', 'pza', 0, coalesce(max(stock_minimo), 10), coalesce(round(avg(costo_unitario), 4), 0)
+          FROM insumos WHERE nombre IN ('Caja chica','Caja mediana','Caja grande') AND activo
+        RETURNING id INTO caja_id;
+    ELSE
+      UPDATE insumos SET activo = true WHERE id = caja_id;
+    END IF;
+    FOR r IN SELECT id, nombre, stock FROM insumos WHERE nombre IN ('Caja chica','Caja mediana','Caja grande') AND activo ORDER BY id LOOP
+      IF r.stock > 0 THEN
+        INSERT INTO movimientos_inventario(insumo_id, tipo, cantidad, nota) VALUES (r.id, 'salida', r.stock, 'Unificación de cajas: pasa a "Caja"');
+        INSERT INTO movimientos_inventario(insumo_id, tipo, cantidad, nota) VALUES (caja_id, 'entrada', r.stock, 'Unificación de cajas: viene de "' || r.nombre || '"');
+        UPDATE insumos SET stock = stock + r.stock WHERE id = caja_id;
+      END IF;
+      INSERT INTO proveedor_insumos(proveedor_id, insumo_id) SELECT proveedor_id, caja_id FROM proveedor_insumos WHERE insumo_id = r.id ON CONFLICT DO NOTHING;
+      DELETE FROM proveedor_insumos WHERE insumo_id = r.id;
+      UPDATE insumos SET stock = 0, activo = false WHERE id = r.id;
+    END LOOP;
+    UPDATE presentaciones SET activo = false;
+  END IF;
+END $$;
+
+-- (2) Solicitudes de reabastecimiento (las hace Almacén; solo el administrador las aprueba) y cotización de los pedidos a proveedor
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN SELECT conname FROM pg_constraint WHERE conrelid = 'pedidos_proveedor'::regclass AND contype = 'c'
+            AND pg_get_constraintdef(oid) LIKE '%enviado%recibido%' AND pg_get_constraintdef(oid) NOT LIKE '%solicitado%' LOOP
+    EXECUTE format('ALTER TABLE pedidos_proveedor DROP CONSTRAINT %I', r.conname);
+  END LOOP;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pedidos_proveedor_estado_ck') THEN
+    ALTER TABLE pedidos_proveedor ADD CONSTRAINT pedidos_proveedor_estado_ck CHECK (estado IN ('solicitado','rechazado','enviado','recibido','cancelado'));
+  END IF;
+END $$;
+ALTER TABLE pedidos_proveedor ADD COLUMN IF NOT EXISTS total          NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE pedidos_proveedor ADD COLUMN IF NOT EXISTS enviado_en     TIMESTAMPTZ;
+ALTER TABLE pedidos_proveedor ADD COLUMN IF NOT EXISTS aprobado_por   INTEGER REFERENCES usuarios(id);
+ALTER TABLE pedidos_proveedor ADD COLUMN IF NOT EXISTS motivo_rechazo VARCHAR(200);
+ALTER TABLE pedido_proveedor_items ADD COLUMN IF NOT EXISTS precio_unitario NUMERIC(12,4) NOT NULL DEFAULT 0 CHECK (precio_unitario >= 0);
+-- Pedidos anteriores: se cotizan al costo unitario vigente del insumo y cuentan como gasto el día en que se enviaron
+UPDATE pedido_proveedor_items it SET precio_unitario = i.costo_unitario FROM insumos i WHERE i.id = it.insumo_id AND it.precio_unitario = 0 AND i.costo_unitario > 0;
+UPDATE pedidos_proveedor pp SET total = coalesce((SELECT round(sum(it.cantidad * it.precio_unitario), 2) FROM pedido_proveedor_items it WHERE it.pedido_id = pp.id), 0) WHERE pp.total = 0;
+UPDATE pedidos_proveedor SET enviado_en = creado_en WHERE enviado_en IS NULL AND estado IN ('enviado','recibido','cancelado');
+CREATE INDEX IF NOT EXISTS pedidos_proveedor_enviado_idx ON pedidos_proveedor (enviado_en);
+
+-- (3) Aviso de privacidad: versión aceptada por cada usuario y cuándo la aceptó
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS privacidad_version VARCHAR(12);
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS privacidad_aceptada_en TIMESTAMPTZ;

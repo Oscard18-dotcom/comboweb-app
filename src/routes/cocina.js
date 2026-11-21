@@ -61,6 +61,17 @@ router.get('/pedidos/:id', wrap(async (req, res) => {
   res.json({ pedido: (await fichas(rows))[0] });
 }));
 
+/* Ticket de compra del pedido (para imprimir). Sin datos sensibles: del pago solo la marca y los últimos 4 dígitos de la tarjeta. */
+router.get('/pedidos/:id/ticket', wrap(async (req, res) => {
+  const id = paramId(req);
+  if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
+  const p = await svc.detallePedido(id);
+  if (!p) return res.status(404).json({ error: 'Pedido no encontrado.' });
+  const pago = (await db.query('SELECT tarjeta,estado FROM pagos WHERE pedido_id=$1 ORDER BY id LIMIT 1', [id])).rows[0] || null;
+  res.json({ ticket: { folio: p.folio, creado_en: p.creado_en, cliente: p.cliente.nombre, entrega: p.entrega, dedicatoria: p.dedicatoria, combo: p.combo ? p.combo.nombre : null,
+    items: p.items, presentacion: p.presentacion, total: p.total, pago: pago ? { estado: pago.estado, tarjeta: pago.tarjeta } : null, estatus: p.estatus } });
+}));
+
 // Cambio de estatus: solo hacia adelante y de uno en uno. Pedir el estatus que ya tiene no hace nada (doble clic seguro).
 router.patch('/pedidos/:id/estatus', wrap(async (req, res) => {
   const id = paramId(req), objetivo = (req.body || {}).estatus;

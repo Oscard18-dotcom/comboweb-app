@@ -24,7 +24,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
   const minOrig = svc.reloj.minutos;
   mail.reemplazar({ nombre: 'prueba', async enviar() {} });
   try {
-    const r0 = await call('POST', '/api/auth/register', { nombre: 'Cliente Hoy', correo: `hoy${R}@prueba.test`, password: 'secreta123' });
+    const r0 = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre: 'Cliente Hoy', correo: `hoy${R}@prueba.test`, password: 'secreta123' });
     clientes.push(r0.j.usuario.id); const cli = r0.j.token;
     const cat = (await call('GET', '/api/catalogo')).j; const G = cat.productos.find((p) => p.nombre === 'Galleta');
     const hoy = svc.todayMX(), manana = svc.addDays(hoy, 1);
@@ -36,15 +36,15 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     delete process.env.MIN_DAYS_AHEAD; delete process.env.MIN_HOURS_AHEAD;
 
     reloj(10);
-    t('a las 10:00 se puede pedir para HOY a las 12:00 (2 h de preparación)', (await cot(hoy, '12:00')).j.ok);
-    t('a las 10:00 NO se puede pedir para hoy a las 11:00 (falta menos de 2 h) → hora_pasada', codigos(await cot(hoy, '11:00')).includes('hora_pasada') && codigos(await cot(hoy, '09:00')).includes('hora_pasada'));
-    t('a las 10:00 las 12:00 en adelante están libres y 09, 10 y 11 no', await (async () => { const h = await horas(hoy); return !h['09:00'] && !h['10:00'] && !h['11:00'] && h['12:00'] && h['18:00']; })());
+    t('a las 10:00 se puede pedir para HOY a las 11:00 (1 h de anticipación) y a las 12:00', (await cot(hoy, '11:00')).j.ok && (await cot(hoy, '12:00')).j.ok);
+    t('a las 10:00 NO se puede pedir para hoy a las 10:00 ni a las 09:00 (falta menos de 1 h) → hora_pasada', codigos(await cot(hoy, '10:00')).includes('hora_pasada') && codigos(await cot(hoy, '09:00')).includes('hora_pasada'));
+    t('a las 10:00 las 11:00 en adelante están libres y 09 y 10 no', await (async () => { const h = await horas(hoy); return !h['09:00'] && !h['10:00'] && h['11:00'] && h['18:00']; })());
     t('mañana no se ve afectado por la hora actual', (await cot(manana, '09:00')).j.ok && (await horas(manana))['09:00'] === true);
     t('ayer sigue sin poderse → fecha_pasada', codigos(await cot(svc.addDays(hoy, -1), '12:00')).includes('fecha_pasada'));
     reloj(17, 30);
     t('a las 17:30 ya no queda ningún horario para hoy, pero mañana sí', Object.values(await horas(hoy)).every((v) => !v) && codigos(await cot(hoy, '18:00')).includes('hora_pasada') && (await cot(manana, '10:00')).j.ok);
     reloj(10, 30);
-    t('a las 10:30 la hora de las 12:00 ya no alcanza y la de las 13:00 sí (hay que contar los minutos)', codigos(await cot(hoy, '12:00')).includes('hora_pasada') && (await cot(hoy, '13:00')).j.ok);
+    t('a las 10:30 la hora de las 11:00 ya no alcanza y la de las 12:00 sí (hay que contar los minutos)', codigos(await cot(hoy, '11:00')).includes('hora_pasada') && (await cot(hoy, '12:00')).j.ok);
     process.env.MIN_HOURS_AHEAD = '0'; reloj(10);
     t('con MIN_HOURS_AHEAD=0 se acepta la hora en punto actual pero no una pasada', (await cot(hoy, '10:00')).j.ok && codigos(await cot(hoy, '09:00')).includes('hora_pasada'));
     delete process.env.MIN_HOURS_AHEAD; process.env.MIN_DAYS_AHEAD = '1';

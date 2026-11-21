@@ -295,8 +295,38 @@ Usa cualquier nombre, un vencimiento futuro (p. ej. 12/30) y un CVV de 3 dígito
 
 ## Pedidos para el mismo día
 
-Ya se puede pedir para hoy. Para evitar horarios imposibles, en los pedidos de hoy solo se ofrecen las horas que falten **al menos 2 horas** (tiempo de preparación; los horarios anteriores aparecen deshabilitados). Se ajusta en `.env` / Render con `MIN_HOURS_AHEAD` (horas) y `MIN_DAYS_AHEAD` (0 = permitir hoy, 1 = exigir mínimo un día). Pruebas: `npm run test:mismo-dia`.
+Ya se puede pedir para hoy. Para evitar horarios imposibles, en los pedidos de hoy solo se ofrecen las horas que falten **al menos 1 hora** (tiempo de preparación; los horarios anteriores aparecen deshabilitados). Se ajusta en `.env` / Render con `MIN_HOURS_AHEAD` (horas) y `MIN_DAYS_AHEAD` (0 = permitir hoy, 1 = exigir mínimo un día). Pruebas: `npm run test:mismo-dia`.
 
 ## Ficha de cocina por producto
 
 Al tocar un pedido en el tablero, la ficha muestra **Ingredientes por producto** (p. ej. “2 × Galleta” con su receta, “1 × Brownie” con la suya), y un desplegable con el **total de ingredientes del pedido**.
+
+
+## Cambios de la versión 2.0 (observaciones del maestro)
+
+**Periodo único en reportes y dashboard.** Todos los reportes (Ventas, Pedidos por estatus) y el Dashboard usan el mismo menú: *Día (hoy), Semana, Mes, Año, Últimos 30 días, Histórico total y Elegir fechas*. El calendario (Desde/Hasta) solo aparece al elegir «Elegir fechas…» y se aplica con el botón *Aplicar*. Existencias es una foto del inventario y no usa periodo. En la API: `?periodo=hoy|semana|mes|anio|ultimos30|total|rango` (con `desde` y `hasta` si es `rango`).
+
+**Anticipación de 1 hora.** Para pedidos del mismo día se exige 1 hora (`MIN_HOURS_AHEAD=1`).
+
+**Caja de un solo tamaño.** Ya no hay caja chica/mediana/grande: existe un único insumo **Caja** (en inventario y proveedores). Al actualizar, las existencias de las tres cajas se suman automáticamente en «Caja» y las anteriores quedan archivadas (el historial se conserva).
+
+**Cotización y gastos.** Al pedir a un proveedor cada renglón lleva su precio unitario (se sugiere el último costo del insumo y se puede cambiar) y el total se calcula en pantalla. El pedido enviado cuenta como **gasto del día** (Dashboard y Reportes de ventas, que ahora muestran utilidad bruta − gastos de compras). Un pedido cancelado deja de contar.
+
+**Almacén solicita, el administrador aprueba.** Almacén puede hacer *solicitudes de reabastecimiento*; quedan «Por aprobar», no mandan correo, no suman stock y no son gasto. Solo el administrador puede **aprobar** (se envía el correo, suma stock y cuenta como gasto), **rechazar** (con motivo), marcar como recibido o cancelar. El administrador sigue pudiendo comprar directo.
+
+**Ticket de compra.** En el tablero de pedidos (cocina y administración), la ficha de cada pedido tiene el botón «Imprimir ticket de compra» (folio, cliente, partidas, total y pago con solo los últimos 4 dígitos de la tarjeta).
+
+**Aviso de privacidad.** Página `public/privacidad.html`. Al crear cuenta hay que marcar «Acepto el Aviso de privacidad» (el servidor lo exige); los clientes que ya tenían cuenta ven una ventana para aceptarlo antes de comprar. Se guarda la versión aceptada y la fecha (`usuarios.privacidad_version`, `privacidad_aceptada_en`). Si cambias el texto, sube `VERSION` en `src/services/privacidad.js` y todos lo aceptarán de nuevo. Pruebas: `npm run test:sprint11`.
+
+### Revisión de cifrado y protección de datos
+
+| Dato | Cómo se protege |
+|---|---|
+| Contraseñas | Hash **bcrypt** (costo 12), irreversible; nunca se guardan ni se devuelven en texto |
+| Enlaces para recuperar contraseña | Solo se guarda su hash SHA-256; caducan y son de un solo uso |
+| Sesiones | JWT firmado con `JWT_SECRET`, caduca a las 8 h y se invalida al cambiar contraseña |
+| Tarjeta de pago | El número y el CVV **no se guardan**: solo marca y últimos 4 dígitos |
+| Datos personales (nombre, correo, teléfono, dirección) | Se guardan como texto en PostgreSQL; protegidos por el cifrado en reposo del proveedor de base de datos (Neon) y por el acceso por rol |
+| Conexión | HTTPS hacia el navegador; SSL hacia la base de datos |
+
+Mejoras posibles (no incluidas): cifrar a nivel de campo nombre/teléfono/dirección con una llave propia, y activar la verificación del certificado SSL de la base de datos.

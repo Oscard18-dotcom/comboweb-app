@@ -1,6 +1,6 @@
 // Prepara el sistema cada vez que arranca en la nube (Render, Railway…). Es SEGURO repetirlo:
 //  1) crea/actualiza las tablas (db/schema.sql es idempotente),
-//  2) carga los datos de ejemplo (insumos, productos, presentaciones) SOLO si la base está vacía,
+//  2) carga los datos de ejemplo (insumos, productos, combos) SOLO si la base está vacía,
 //     así lo que borres o cambies no reaparece en el siguiente reinicio,
 //  3) crea el administrador con ADMIN_EMAIL / ADMIN_PASSWORD SOLO si todavía no existe ninguno.
 //     (Si olvidaste la contraseña: pon ADMIN_REINICIAR=true junto con ADMIN_EMAIL y ADMIN_PASSWORD nuevos, reinicia el servicio y luego QUITA ADMIN_REINICIAR.)

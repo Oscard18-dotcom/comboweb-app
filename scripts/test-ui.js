@@ -58,7 +58,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     $('#f-olvide [data-volver]').click();
     t('"Volver a iniciar sesión" regresa al formulario de entrada', !$('#f-login').hidden && $('#f-olvide').hidden && $('#okauth').textContent === '');
     {
-      const ru = await (await fetch(B + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: 'Rec UI', correo: `recui${R}@prueba.test`, password: 'vieja12345' }) })).json();
+      const ru = await (await fetch(B + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acepta_privacidad: true, nombre: 'Rec UI', correo: `recui${R}@prueba.test`, password: 'vieja12345' }) })).json();
       const tokR = require('crypto').randomBytes(32).toString('hex');
       await db.query("INSERT INTO recuperaciones_password(usuario_id,token_hash,expira_en) VALUES($1,$2,now()+interval '1 hour')", [ru.usuario.id, require('crypto').createHash('sha256').update(tokR).digest('hex')]);
       const wr = (await abrir(`${B}/?reset=${tokR}`, { t: ru.token, u: JSON.stringify(ru.usuario) })).window, $r = (x) => wr.document.querySelector(x);
@@ -74,6 +74,10 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     }
     $('#tab-reg').click();
     const fr = $('#f-reg'); fr.elements.nombre.value = 'Prueba UI'; fr.elements.correo.value = `ui${R}@prueba.test`; fr.elements.password.value = 'secreta123';
+    t('registro: la casilla del Aviso de privacidad existe, enlaza a privacidad.html y es obligatoria', !!fr.elements.acepta_privacidad && fr.elements.acepta_privacidad.required && !!fr.querySelector('a[href="privacidad.html"]'));
+    fr.dispatchEvent(new w.Event('submit', { cancelable: true, bubbles: true }));
+    t('registro sin aceptar el aviso: se rechaza y muestra el error', await until(() => /privacidad/i.test($('#err').textContent)) && $('#armar').hidden);
+    fr.elements.acepta_privacidad.checked = true;
     fr.dispatchEvent(new w.Event('submit', { cancelable: true, bubbles: true }));
     t('registro: inicia sesión y muestra "Armar combo"', await until(() => !$('#armar').hidden && $('#who').textContent.includes('Cliente') && $('#armar .opt.tipo')));
     const tiposUI = [...w.document.querySelectorAll('#armar .opt.tipo')];
@@ -149,10 +153,10 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     await db.query("UPDATE insumos SET stock=stock_minimo WHERE nombre='Té chai'");
     dom = await abrir(B + '/'); w = dom.window; $ = (s) => w.document.querySelector(s);
     await until(() => w.document.querySelectorAll('#cat .item').length >= 1); await entrar(w, 'almacen@encombo.test', clave);
-    t('almacén: ve su panel con una sola pestaña (Inventario) y sin catálogo público', await until(() => !$('#staff').hidden && $('#staff tbody tr')) && $('#catalogo').hidden && w.document.querySelectorAll('#staff .seg button').length === 0 && /Mínimo/.test($('#staff').textContent));
+    t('almacén: ve su panel con una sola pestaña (Inventario) y sin catálogo público', await until(() => !$('#staff').hidden && $('#staff tbody tr')) && $('#catalogo').hidden && [...w.document.querySelectorAll('#staff > .seg button')].map((b) => b.textContent).join('|') === 'Inventario|Pedidos a proveedor' && /Mínimo/.test($('#staff').textContent));
     t('almacén: la tabla de inventario no muestra basura (null, undefined)', limpio(w));
     const filas = () => [...w.document.querySelectorAll('#staff tbody tr')];
-    t('la tabla lista los insumos con su estado', filas().length >= 10 && filas().some((f) => /Reorden/.test(f.textContent)));
+    t('la tabla lista los insumos con su estado', filas().length >= 8 && filas().some((f) => /Reorden/.test(f.textContent)));
     t('el aviso de reorden nombra el insumo bajo', /⚠/.test($('#staff .alerta').textContent) && /Té chai/.test($('#staff .alerta').textContent));
     const buscar = $('#staff input[type=search]'); cambiar(w, buscar, 'harina');
     t('buscar filtra la tabla', filas().length === 1 && /Harina/.test(filas()[0].textContent));
@@ -244,7 +248,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('eliminar producto: tras confirmar desaparece de la lista y de la base (con su receta)', await until(() => !prod(`UI4 Borrar ${R}`)) && (await db.query("SELECT 1 FROM productos WHERE nombre=$1", [`UI4 Borrar ${R}`])).rows.length === 0 && limpio(w));
     t('…el panel vuelve al estado inicial y los demás productos siguen ahí', await until(() => /Elige un producto/.test($('#staff').textContent)) && !!prod('UI4 Prod'));
     [...w.document.querySelectorAll('#staff .seg button')].find((b) => /Inventario/.test(b.textContent)).click();
-    t('el administrador también ve el inventario', await until(() => w.document.querySelectorAll('#staff tbody tr').length >= 10));
+    t('el administrador también ve el inventario', await until(() => w.document.querySelectorAll('#staff tbody tr').length >= 8));
     const ordenCli = (await db.query('SELECT id,total FROM pedidos WHERE cliente_id=$1', [uid])).rows[0];
     pest(w, 'Tablero de pedidos').click();
     cambiar(w, await until(() => $('#staff input[type=date]')), fecha);
@@ -257,7 +261,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     pest(w, 'Pedidos por estatus').click();
     t('reportes: pedidos por estatus (4 estatus y suma)', await until(() => { const x = $('#staff table.contable'); return x && x.querySelectorAll('tbody tr').length === 5 && /Suma/.test(x.textContent); }));
     pest(w, 'Existencias de inventario').click();
-    t('reportes: existencias valuadas, con Té chai en reorden', await until(() => { const x = $('#staff table.contable'); return x && x.querySelectorAll('tbody tr').length === 11 && /Té chai/.test(x.textContent) && /Reorden/.test(x.textContent); }));
+    t('reportes: existencias valuadas, con Té chai en reorden', await until(() => { const x = $('#staff table.contable'); return x && x.querySelectorAll('tbody tr').length === 9 && /Té chai/.test(x.textContent) && /Reorden/.test(x.textContent); }));
     w.URL.createObjectURL = () => 'blob:prueba'; w.URL.revokeObjectURL = () => {};
     [...w.document.querySelectorAll('#staff button')].find((b) => /Descargar para Excel/.test(b.textContent)).click();
     t('reportes: "Descargar CSV" pide el archivo con la sesión y sin errores', await until(() => w.__urls.some((u) => /reportes\/existencias\?formato=csv/.test(u))) && !$('#staff .errbox').textContent);
@@ -327,12 +331,12 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const sub = (txt) => [...w.document.querySelectorAll('#staff .seg button')].find((b) => b.textContent === txt && b.dataset.s);
     const bp = (txt) => [...w.document.querySelectorAll('#staff button')].find((b) => b.textContent.trim() === txt);
     pest(w, 'Pedidos a proveedor').click();
-    t('pedidos a proveedor: 3 sub-pestañas y abre en "Pedidos enviados"', await until(() => ['Pedidos enviados', 'Nuevo pedido', 'Proveedores'].every((n) => sub(n))) && sub('Pedidos enviados').classList.contains('on') && limpio(w));
+    t('pedidos a proveedor: 3 sub-pestañas y abre en "Pedidos y solicitudes"', await until(() => ['Pedidos y solicitudes', 'Nuevo pedido', 'Proveedores'].every((n) => sub(n))) && sub('Pedidos y solicitudes').classList.contains('on') && limpio(w));
     sub('Proveedores').click();
     await until(() => bp('+ Agregar proveedor')); bp('+ Agregar proveedor').click();
     let pf = await until(() => $('#staff form'));
     const NP = 'UI7 Proveedor ' + R;
-    t('proveedores: el formulario lista los insumos como casillas', pf.querySelectorAll('.lista-insumos input[type=checkbox]').length >= 10);
+    t('proveedores: el formulario lista los insumos como casillas', pf.querySelectorAll('.lista-insumos input[type=checkbox]').length >= 8);
     const campos7 = pf.querySelectorAll('input:not([type=checkbox])'); cambiar(w, campos7[0], NP); cambiar(w, campos7[1], 'correo-malo');
     enviarForm(w, pf);
     t('proveedores: un correo inválido muestra el error y no guarda nada', await until(() => /correo válido/i.test($('#staff .errbox').textContent)) && (await db.query('SELECT 1 FROM proveedores WHERE nombre=$1', [NP])).rows.length === 0);
@@ -376,7 +380,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const tokA = (await (await fetch(B + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ correo: 'admin@encombo.test', password: clave }) })).json()).token;
     const provNP = (await db.query('SELECT id FROM proveedores WHERE nombre=$1', [NP])).rows[0].id;
     await fetch(B + '/api/pedidos-proveedor', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokA }, body: JSON.stringify({ proveedor_id: provNP, suma_stock_en: 'recepcion', items: [{ insumo_id: harinaId, cantidad: 10 }] }) });
-    sub('Pedidos enviados').click();
+    sub('Pedidos y solicitudes').click();
     await until(() => [...w.document.querySelectorAll('#staff tbody tr')].some((r) => /Falta sumar/.test(r.textContent) && r.textContent.includes(NP)));
     [...[...w.document.querySelectorAll('#staff tbody tr')].find((r) => /Falta sumar/.test(r.textContent)).querySelectorAll('button')].find((b) => b.textContent === 'Cancelar').click();
     await until(() => bp('Sí, cancelar pedido')); bp('Sí, cancelar pedido').click();
@@ -422,7 +426,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('usuarios: "ver también clientes" los muestra', /ui\d+@prueba\.test/.test($('#staff').textContent));
 
     /* ---------- MI CUENTA (cambio de contraseña) ---------- */
-    const rc = await (await fetch(B + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: 'Cuenta UI6', correo: `ui6cta${R}@prueba.test`, password: 'secreta123' }) })).json();
+    const rc = await (await fetch(B + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acepta_privacidad: true, nombre: 'Cuenta UI6', correo: `ui6cta${R}@prueba.test`, password: 'secreta123' }) })).json();
     const wcta = (await abrir(B + '/', { t: rc.token, u: JSON.stringify(rc.usuario) })).window;
     await until(() => !wcta.document.querySelector('#btn-cuenta').hidden);
     wcta.document.querySelector('#btn-cuenta').click();
@@ -477,6 +481,83 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('el estatus se actualiza solo en pantalla (sin recargar) y se completa la línea de tiempo', await until(() => { const c = tarjCli(); return c && c.querySelector('.tl').querySelectorAll('.d').length === 4 && /Entregado/.test(c.querySelector('.chip').textContent); }, 5000));
     [...tarjCli().querySelectorAll('button')].find((b) => /Ver comprobante/.test(b.textContent)).click();
     t('el comprobante incluye el seguimiento del pedido', await until(() => /Seguimiento/.test(wc.document.querySelector('#msg').textContent) && wc.document.querySelector('#msg .tl')));
+    /* ---------- SPRINT 11: periodos, solicitudes de Almacén, ticket y aviso de privacidad ---------- */
+    const abrirComo = async (correo) => { const d2 = await abrir(B + '/'); const x = d2.window; await until(() => x.document.querySelectorAll('#cat .item').length >= 1); await entrar(x, correo, clave); await until(() => !x.document.querySelector('#staff').hidden && x.document.querySelector('#staff .seg button')); return x; };
+    const pestDe = (x, txt) => [...x.document.querySelectorAll('#staff > .seg button')].find((b) => b.textContent === txt);
+    const subDe = (x, txt) => [...x.document.querySelectorAll('#staff .seg button')].find((b) => b.textContent === txt && b.dataset.s);
+    const wad = await abrirComo('admin@encombo.test'), $s11 = (q2) => wad.document.querySelector(q2);
+    pestDe(wad, 'Reportes').click();
+    await until(() => $s11('#staff [data-periodo]'));
+    const opcR = [...wad.document.querySelectorAll('#staff [data-periodo] option')].map((o) => o.textContent);
+    t('reportes: el mismo menú de periodo (día, semana, mes, año, 30 días, histórico, elegir fechas)', ['Día (hoy)', 'Semana', 'Mes', 'Año', 'Últimos 30 días', 'Histórico total', 'Elegir fechas…'].every((n) => opcR.includes(n)));
+    const fechasR = () => $s11('#staff [data-fechas]'), menuR = () => $s11('#staff [data-periodo]');
+    const cambiarR = (v) => { menuR().value = v; menuR().dispatchEvent(new wad.Event('change', { bubbles: true })); };
+    t('reportes: el calendario NO se ve hasta elegir "Elegir fechas…" (atributo hidden y CSS que lo respeta)', fechasR().hidden === true && /\[hidden\]\s*\{\s*display:\s*none\s*!important/.test(require('fs').readFileSync(require('path').join(__dirname, '../public/styles.css'), 'utf8')));
+    cambiarR('rango');
+    t('reportes: al elegir "Elegir fechas…" aparece el calendario', fechasR().hidden === false && $s11('#staff [data-desde]').type === 'date');
+    cambiarR('mes');
+    t('reportes: al volver a otro periodo el calendario se oculta de nuevo', fechasR().hidden === true && await until(() => /Ventas por periodo/.test($s11('#staff').textContent)));
+    pestDe(wad, 'Reportes') && $s11('#staff form button.btn:not(.s)');
+    [...wad.document.querySelectorAll('#staff .seg button')].find((b) => b.textContent === 'Pedidos por estatus').click();
+    cambiarR('hoy');
+    t('reportes: el periodo también aplica a "Pedidos por estatus"', await until(() => (wad.__urls || []).some((u) => /reportes\/estatus\?periodo=hoy/.test(u))));
+    [...wad.document.querySelectorAll('#staff .seg button')].find((b) => b.textContent === 'Existencias de inventario').click();
+    t('reportes: Existencias (foto del inventario) no usa periodo y oculta el menú', await until(() => menuR().closest('div.noprint').hidden === true));
+    // Almacén: solicitud → administrador aprueba
+    await db.query("INSERT INTO proveedores(nombre,correo) VALUES('UI7 Prov11','p11@ui7.test')");
+    const wal = await abrirComo('almacen@encombo.test');
+    pestDe(wal, 'Pedidos a proveedor').click();
+    await until(() => subDe(wal, 'Solicitar reabastecimiento'));
+    t('almacén: en Pedidos a proveedor solo ve "Mis solicitudes" y "Solicitar reabastecimiento" (sin Proveedores)', ['Mis solicitudes', 'Solicitar reabastecimiento'].every((n) => subDe(wal, n)) && !subDe(wal, 'Proveedores'));
+    subDe(wal, 'Solicitar reabastecimiento').click();
+    await until(() => wal.document.querySelector('#staff select[aria-label=Proveedor]'));
+    cambiar(wal, wal.document.querySelector('#staff select[aria-label=Proveedor]'), String((await db.query("SELECT id FROM proveedores WHERE nombre='UI7 Prov11'")).rows[0].id));
+    const lnA = wal.document.querySelector('#staff .lp'); cambiar(wal, lnA.querySelector('select'), String(harinaId)); cambiar(wal, lnA.querySelector('input[aria-label=Cantidad]'), '100');
+    const costoH = Number((await db.query('SELECT costo_unitario FROM insumos WHERE id=$1', [harinaId])).rows[0].costo_unitario);
+    t('solicitud: el precio unitario se sugiere con el costo del insumo y se calcula la cotización', Number(lnA.querySelector('input[data-precio]').value) === costoH && /Cotización estimada: \$/.test(wal.document.querySelector('#staff [data-cotizacion]').textContent));
+    cambiar(wal, lnA.querySelector('input[data-precio]'), '0.1');
+    t('solicitud: al cambiar el precio se recalcula (100 × 0.10 = $10.00)', await until(() => /\$10\.00/.test(wal.document.querySelector('#staff [data-cotizacion]').textContent)));
+    t('solicitud: el botón dice "Enviar solicitud a administración"', /Enviar solicitud a administración/.test(wal.document.querySelector('#staff form button[type=submit]').textContent));
+    enviarForm(wal, wal.document.querySelector('#staff form'));
+    t('solicitud: confirma que quedó pendiente de aprobación', await until(() => /Solicitud PP-\d{4} enviada/.test(wal.document.querySelector('#staff').textContent) && /pendiente de aprobación/.test(wal.document.querySelector('#staff').textContent)));
+    const ppSol = (await db.query("SELECT pp.id,pp.estado,pp.total FROM pedidos_proveedor pp JOIN proveedores p ON p.id=pp.proveedor_id WHERE p.nombre='UI7 Prov11' ORDER BY pp.id DESC LIMIT 1")).rows[0];
+    t('solicitud: en la base queda "solicitado" con su total y sin sumar stock', ppSol.estado === 'solicitado' && Number(ppSol.total) === 10);
+    subDe(wal, 'Mis solicitudes').click();
+    t('almacén: ve su solicitud "Por aprobar" y NO tiene botones de aprobar ni recibir', await until(() => [...wal.document.querySelectorAll('#staff tbody tr')].some((r) => /Por aprobar/.test(r.textContent))) && ![...wal.document.querySelectorAll('#staff button')].some((b) => /Aprobar|Rechazar|Marcar recibido|Cancelar/.test(b.textContent)));
+    pestDe(wad, 'Pedidos a proveedor').click();
+    await until(() => subDe(wad, 'Pedidos y solicitudes'));
+    const bAprobar = () => wad.document.querySelector(`#staff [data-aprobar="${ppSol.id}"]`);
+    t('administrador: ve la solicitud con "Aprobar compra" y "Rechazar"', await until(() => bAprobar()) && !!wad.document.querySelector(`#staff [data-rechazar="${ppSol.id}"]`));
+    bAprobar().click();
+    await until(() => [...wad.document.querySelectorAll('#staff button')].find((b) => b.textContent === 'Sí, aprobar y enviar'));
+    [...wad.document.querySelectorAll('#staff button')].find((b) => b.textContent === 'Sí, aprobar y enviar').click();
+    t('administrador: aprueba y la solicitud pasa a enviada (gasto registrado)', await until(async () => (await db.query('SELECT estado FROM pedidos_proveedor WHERE id=$1', [ppSol.id])).rows[0].estado === 'enviado') && limpio(wad));
+    // Ticket de compra desde cocina
+    const cliT = (await db.query('SELECT id FROM usuarios WHERE id=$1', [uid])).rows[0].id;
+    const pedT = (await db.query(`INSERT INTO pedidos(cliente_id,fecha_entrega,hora_entrega,total,estatus,combo,combo_nombre) VALUES($1,CURRENT_DATE,'13:00',30,'Pendiente','personalizado','Combo personalizado') RETURNING id`, [cliT])).rows[0].id;
+    await db.query('INSERT INTO pedido_items(pedido_id,producto_id,cantidad,precio_unitario) VALUES($1,(SELECT id FROM productos WHERE nombre=\'Galleta\'),2,15)', [pedT]);
+    const wco = await abrirComo('cocina@encombo.test'); let impresiones = 0; wco.print = () => { impresiones++; };
+    await until(() => wco.document.querySelector(`#staff .oc[aria-label="Pedido ${svc.folio(pedT)}"]`));
+    wco.document.querySelector(`#staff .oc[aria-label="Pedido ${svc.folio(pedT)}"]`).click();
+    await until(() => wco.document.querySelector('[data-ticket]'));
+    t('cocina: la ficha del pedido tiene el botón "Imprimir ticket de compra"', !!wco.document.querySelector('[data-ticket]'));
+    wco.document.querySelector('[data-ticket]').click();
+    t('cocina: el ticket se arma con folio, partidas y total, y se manda a imprimir', await until(() => impresiones === 1 && wco.document.getElementById('ticket-print') && new RegExp(svc.folio(pedT)).test(wco.document.getElementById('ticket-print').textContent) && /2 × Galleta/.test(wco.document.getElementById('ticket-print').textContent) && /TOTAL/.test(wco.document.getElementById('ticket-print').textContent)) && wco.document.body.classList.contains('print-ticket'));
+    wco.dispatchEvent(new wco.Event('afterprint'));
+    t('cocina: al terminar de imprimir se vuelve a la pantalla normal', await until(() => !wco.document.body.classList.contains('print-ticket')));
+    pestDe(wad, 'Tablero de pedidos').click();
+    await until(() => wad.document.querySelector('#staff .kb'));
+    t('administrador: también tiene el tablero de pedidos (y su opción de ticket)', !!wad.document.querySelector('#staff .kb'));
+    // Aviso de privacidad para cuentas existentes
+    const rp = await (await fetch(B + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acepta_privacidad: true, nombre: 'Cuenta UI6 Priv', correo: `ui6priv${R}@prueba.test`, password: 'secreta123' }) })).json();
+    await db.query('UPDATE usuarios SET privacidad_version=NULL, privacidad_aceptada_en=NULL WHERE id=$1', [rp.usuario.id]);
+    const lg = await (await fetch(B + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ correo: `ui6priv${R}@prueba.test`, password: 'secreta123' }) })).json();
+    const wp = (await abrir(B + '/', { t: lg.token, u: JSON.stringify(lg.usuario) })).window;
+    t('cuenta sin aceptar: aparece la ventana del Aviso de privacidad con enlace al texto completo', await until(() => wp.document.getElementById('privacidad-modal') && wp.document.querySelector('#privacidad-modal a[href="privacidad.html"]')));
+    wp.document.querySelector('[data-aceptar-privacidad]').click();
+    t('no se puede continuar sin marcar la casilla', await until(() => /Marca la casilla/.test(wp.document.getElementById('privacidad-modal').textContent)) && !!wp.document.getElementById('privacidad-modal'));
+    wp.document.getElementById('acepto-priv').checked = true; wp.document.querySelector('[data-aceptar-privacidad]').click();
+    t('al aceptar: se guarda, se cierra la ventana y queda registrada la versión', await until(() => !wp.document.getElementById('privacidad-modal')) && (await db.query('SELECT privacidad_version FROM usuarios WHERE id=$1', [rp.usuario.id])).rows[0].privacidad_version === require('../src/services/privacidad').VERSION);
     t('sin errores de JavaScript en todo el recorrido', errores.length === 0, errores.join(' || '));
   } catch (e) { fail++; console.log('FAIL error inesperado', e); }
   finally {

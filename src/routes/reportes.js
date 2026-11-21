@@ -12,13 +12,45 @@ const r2 = (n) => Math.round(Number(n) * 100) / 100;
 const ESTATUS = ['Pendiente', 'En preparación', 'Listo para entrega', 'Entregado'];
 const UNIDAD = { dia: 'day', semana: 'week', mes: 'month' };
 
-function rango(req, res) {
-  const hasta = req.query.hasta || svc.todayMX();
-  const desde = req.query.desde || svc.addDays(hasta, -29);
-  if (!svc.fechaValida(desde) || !svc.fechaValida(hasta)) { res.status(400).json({ error: 'Las fechas deben tener el formato AAAA-MM-DD.' }); return null; }
-  if (desde > hasta) { res.status(400).json({ error: 'La fecha inicial debe ser anterior o igual a la final.' }); return null; }
-  if ((Date.parse(hasta) - Date.parse(desde)) / 864e5 > 366) { res.status(400).json({ error: 'El rango máximo es de un año.' }); return null; }
-  return { desde, hasta };
+const PERIODOS = ['hoy', 'semana', 'mes', 'trimestre', 'semestre', 'anio', 'total', 'ultimos30', 'rango'];
+function inicioPeriodo(periodo, hoy) {
+  const [y, m] = hoy.split('-').map(Number), pad = (n) => String(n).padStart(2, '0');
+  if (periodo === 'hoy') return hoy;
+  if (periodo === 'ultimos30') return svc.addDays(hoy, -29);
+  if (periodo === 'semana') { const dow = (new Date(hoy + 'T12:00:00Z').getUTCDay() + 6) % 7; return svc.addDays(hoy, -dow); }
+  if (periodo === 'mes') return `${y}-${pad(m)}-01`;
+  if (periodo === 'trimestre') return `${y}-${pad(Math.floor((m - 1) / 3) * 3 + 1)}-01`;
+  if (periodo === 'semestre') return `${y}-${m <= 6 ? '01' : '07'}-01`;
+  if (periodo === 'anio') return `${y}-01-01`;
+  return null;
+}
+/* Mismo selector de periodo para TODOS los reportes: ?periodo=hoy|semana|mes|anio|ultimos30|total|rango (+desde/hasta).
+   Sin "periodo" se aceptan desde/hasta sueltos (compatibilidad); sin nada, los últimos 30 días. */
+async function resolverPeriodo(req, res) {
+  const hoy = svc.todayMX();
+  let periodo = req.query.periodo;
+  if (periodo === undefined) periodo = req.query.desde || req.query.hasta ? 'rango' : 'ultimos30';
+  if (!PERIODOS.includes(periodo)) { res.status(400).json({ error: 'Elige hoy, semana, mes, anio, ultimos30, total o rango.' }); return null; }
+  let hasta = hoy, desde = inicioPeriodo(periodo, hoy);
+  if (periodo === 'rango') {
+    if (req.query.periodo === 'rango' && (!req.query.desde || !req.query.hasta)) { res.status(400).json({ error: 'Elige la fecha inicial y la final.' }); return null; }
+    desde = req.query.desde || svc.addDays(req.query.hasta || hoy, -29); hasta = req.query.hasta || hoy;
+    if (!svc.fechaValida(desde) || !svc.fechaValida(hasta)) { res.status(400).json({ error: 'Las fechas deben tener el formato AAAA-MM-DD.' }); return null; }
+    if (desde > hasta) { res.status(400).json({ error: 'La fecha inicial debe ser anterior o igual a la final.' }); return null; }
+    if ((Date.parse(hasta) - Date.parse(desde)) / 864e5 > 1830) { res.status(400).json({ error: 'El rango máximo es de 5 años.' }); return null; }
+  } else if (!desde) {
+    desde = (await db.query(`SELECT least(coalesce(min(${FECHA}), $1::date), $1::date)::text AS d FROM pedidos p`, [hoy])).rows[0].d;
+  }
+  return { periodo, desde, hasta };
+}
+/* Gastos de compras a proveedores: lo que se pidió (enviado/recibido) cuenta el día en que se envió el pedido, hora de México */
+async function gastosCompras(desde, hasta) {
+  const { rows } = await db.query(
+    `SELECT pp.id, pp.total, pr.nombre AS proveedor, (pp.enviado_en AT TIME ZONE ${TZ})::date::text AS fecha
+       FROM pedidos_proveedor pp JOIN proveedores pr ON pr.id = pp.proveedor_id
+      WHERE pp.estado IN ('enviado','recibido') AND (pp.enviado_en AT TIME ZONE ${TZ})::date BETWEEN $1 AND $2 ORDER BY pp.enviado_en`, [desde, hasta]);
+  return { total: r2(rows.reduce((a, x) => a + Number(x.total), 0)), pedidos: rows.length,
+    detalle: rows.map((x) => ({ folio: require('../services/compras').folioPP(x.id), proveedor: x.proveedor, fecha: x.fecha, total: r2(x.total) })) };
 }
 // CSV para abrir en Excel (con BOM para que respete los acentos). Los textos que empiezan con = + - @ se neutralizan
 // para que no se ejecuten como fórmulas; los números no se tocan.
@@ -35,7 +67,7 @@ function csv(res, nombre, cabecera, filas) {
 /* Dashboard: lo importante del día en una sola consulta */
 router.get('/dashboard', wrap(async (req, res) => {
   const hoy = svc.todayMX();
-  const [ventas, est, entregas, reorden, prox, serie, notif, rev, ppx] = await Promise.all([
+  const [ventas, est, entregas, reorden, prox, serie, notif, rev, ppx, gh, sol] = await Promise.all([
     db.query(`SELECT count(*)::int AS n, coalesce(sum(total),0) AS total FROM pedidos p WHERE ${FECHA} = $1`, [hoy]),
     db.query('SELECT estatus, count(*)::int AS n FROM pedidos GROUP BY estatus'),
     db.query("SELECT count(*)::int AS n FROM pedidos WHERE fecha_entrega=$1 AND estatus<>'Entregado'", [hoy]),
@@ -48,6 +80,8 @@ router.get('/dashboard', wrap(async (req, res) => {
     db.query("SELECT estado, count(*)::int AS n FROM notificaciones WHERE estado IN ('fallida','error','pendiente') GROUP BY estado"),
     db.query(`SELECT c.id,c.total,c.proveedor,c.referencia,c.creado_en,u.nombre AS cliente FROM checkouts c JOIN usuarios u ON u.id=c.cliente_id WHERE c.estado='revision' ORDER BY c.creado_en DESC LIMIT 5`),
     db.query("SELECT count(*)::int AS n FROM pedidos_proveedor WHERE estado='enviado' AND NOT stock_aplicado"),
+    gastosCompras(hoy, hoy),
+    db.query("SELECT count(*)::int AS n FROM pedidos_proveedor WHERE estado='solicitado'"),
   ]);
   const porEstatus = Object.fromEntries(ESTATUS.map((e) => [e, (est.rows.find((x) => x.estatus === e) || { n: 0 }).n]));
   const nt = Object.fromEntries(notif.rows.map((x) => [x.estado, x.n]));
@@ -57,7 +91,7 @@ router.get('/dashboard', wrap(async (req, res) => {
     proximas_entregas: prox.rows.map((x) => ({ ...x, folio: svc.folio(x.id) })),
     ventas_7_dias: serie.rows.map((x) => ({ fecha: x.fecha, pedidos: x.pedidos, ventas: r2(x.ventas) })),
     notificaciones: { fallidas: nt.fallida || 0, con_error: nt.error || 0, pendientes: nt.pendiente || 0 },
-    pedidos_proveedor_por_recibir: ppx.rows[0].n,
+    pedidos_proveedor_por_recibir: ppx.rows[0].n, gastos_hoy: gh.total, compras_hoy: gh.pedidos, solicitudes_pendientes: sol.rows[0].n,
     pagos_en_revision: rev.rows.length, pagos_revision: rev.rows.map((x) => ({ ...x, total: Number(x.total) })) });
 }));
 
@@ -83,33 +117,10 @@ async function ventasPorCombo(desde, hasta) {
   return lista;
 }
 
-const PERIODOS = ['hoy', 'semana', 'mes', 'trimestre', 'semestre', 'anio', 'total', 'ultimos30', 'rango'];
-function inicioPeriodo(periodo, hoy) {
-  const [y, m] = hoy.split('-').map(Number), pad = (n) => String(n).padStart(2, '0');
-  if (periodo === 'hoy') return hoy;
-  if (periodo === 'ultimos30') return svc.addDays(hoy, -29);
-  if (periodo === 'semana') { const dow = (new Date(hoy + 'T12:00:00Z').getUTCDay() + 6) % 7; return svc.addDays(hoy, -dow); }
-  if (periodo === 'mes') return `${y}-${pad(m)}-01`;
-  if (periodo === 'trimestre') return `${y}-${pad(Math.floor((m - 1) / 3) * 3 + 1)}-01`;
-  if (periodo === 'semestre') return `${y}-${m <= 6 ? '01' : '07'}-01`;
-  if (periodo === 'anio') return `${y}-01-01`;
-  return null;
-}
-
 router.get('/ventas-periodo', wrap(async (req, res) => {
-  const periodo = req.query.periodo || 'hoy';
-  if (!PERIODOS.includes(periodo)) return res.status(400).json({ error: 'Elige hoy, semana, mes, anio, total, ultimos30 o rango.' });
-  let hasta = svc.todayMX();
-  let desde = inicioPeriodo(periodo, hasta);
-  if (periodo === 'rango') {
-    desde = req.query.desde; hasta = req.query.hasta;
-    if (!svc.fechaValida(desde) || !svc.fechaValida(hasta)) return res.status(400).json({ error: 'Las fechas deben tener el formato AAAA-MM-DD.' });
-    if (desde > hasta) return res.status(400).json({ error: 'La fecha inicial debe ser anterior o igual a la final.' });
-    if ((Date.parse(hasta) - Date.parse(desde)) / 864e5 > 1830) return res.status(400).json({ error: 'El rango máximo es de 5 años.' });
-  } else if (!desde) {
-    const m = (await db.query(`SELECT min(${FECHA})::text AS d FROM pedidos p`)).rows[0].d;
-    desde = m || hasta;
-  }
+  if (req.query.periodo === undefined) req.query.periodo = 'hoy';
+  const pr = await resolverPeriodo(req, res); if (!pr) return;
+  const { periodo, desde, hasta } = pr;
   const dias = (Date.parse(hasta) - Date.parse(desde)) / 864e5;
   const unidad = dias === 0 ? 'hour' : dias <= 31 ? 'day' : dias <= 100 ? 'week' : dias <= 1100 ? 'month' : 'year';
   const { rows } = await db.query(
@@ -120,15 +131,17 @@ router.get('/ventas-periodo', wrap(async (req, res) => {
        FROM base b LEFT JOIN costos c ON c.pedido_id = b.id GROUP BY 1 ORDER BY 1`, [desde, hasta, unidad]);
   const tot = rows.reduce((a, x) => ({ pedidos: a.pedidos + x.pedidos, ventas: a.ventas + Number(x.ventas), costo: a.costo + Number(x.costo) }), { pedidos: 0, ventas: 0, costo: 0 });
   const combos = (await ventasPorCombo(desde, hasta)).map((x) => ({ nombre: x.nombre, pedidos: x.pedidos, ventas: x.ventas }));
-  res.json({ periodo, desde, hasta, unidad, pedidos: tot.pedidos, ventas: r2(tot.ventas), costo: r2(tot.costo), utilidad: r2(tot.ventas - tot.costo),
+  const gas = await gastosCompras(desde, hasta);
+  res.json({ periodo, desde, hasta, unidad, pedidos: tot.pedidos, ventas: r2(tot.ventas), costo: r2(tot.costo), utilidad: r2(tot.ventas - tot.costo), gastos: gas.total, compras: gas.pedidos, gastos_detalle: gas.detalle,
     margen_pct: tot.ventas > 0 ? Math.round((tot.ventas - tot.costo) / tot.ventas * 1000) / 10 : 0, ticket_promedio: tot.pedidos ? r2(tot.ventas / tot.pedidos) : 0,
     serie: rows.map((x) => ({ periodo: x.periodo, pedidos: x.pedidos, ventas: r2(x.ventas) })),
     combos });
 }));
 
 router.get('/ventas', wrap(async (req, res) => {
-  const rg = rango(req, res); if (!rg) return;
-  const agrupar = req.query.agrupar || 'dia';
+  const rg = await resolverPeriodo(req, res); if (!rg) return;
+  const dias = (Date.parse(rg.hasta) - Date.parse(rg.desde)) / 864e5;
+  const agrupar = req.query.agrupar || (dias <= 62 ? 'dia' : dias <= 400 ? 'semana' : 'mes');
   if (!UNIDAD[agrupar]) return res.status(400).json({ error: 'Agrupa por dia, semana o mes.' });
   const { rows } = await db.query(
     `WITH base AS (SELECT p.id, p.total, ${FECHA} AS f FROM pedidos p WHERE ${FECHA} BETWEEN $1 AND $2),
@@ -144,15 +157,18 @@ router.get('/ventas', wrap(async (req, res) => {
        JOIN productos pd ON pd.id = i.producto_id WHERE ${FECHA} BETWEEN $1 AND $2 GROUP BY pd.nombre ORDER BY piezas DESC, pd.nombre LIMIT 10`, [rg.desde, rg.hasta])).rows
     .map((x) => ({ nombre: x.nombre, piezas: x.piezas, ventas: r2(x.ventas) }));
   const combos = await ventasPorCombo(rg.desde, rg.hasta);
+  const gas = await gastosCompras(rg.desde, rg.hasta);
+  totales.gastos = gas.total; totales.resultado = r2(totales.utilidad - gas.total);
   if (req.query.formato === 'csv')
     return csv(res, `ventas-${rg.desde}-a-${rg.hasta}`, ['Periodo', 'Pedidos', 'Ventas', 'Costo de insumos', 'Utilidad bruta'],
-      [...periodos.map((x) => [x.periodo, x.pedidos, x.ventas.toFixed(2), x.costo.toFixed(2), x.utilidad.toFixed(2)]), ['TOTAL', totales.pedidos, totales.ventas.toFixed(2), totales.costo.toFixed(2), totales.utilidad.toFixed(2)]]);
-  res.json({ ...rg, agrupar, periodos, totales, top_productos: top, combos });
+      [...periodos.map((x) => [x.periodo, x.pedidos, x.ventas.toFixed(2), x.costo.toFixed(2), x.utilidad.toFixed(2)]), ['TOTAL', totales.pedidos, totales.ventas.toFixed(2), totales.costo.toFixed(2), totales.utilidad.toFixed(2)],
+        ['Gastos de compras a proveedores', gas.pedidos, '', gas.total.toFixed(2), ''], ['Resultado (utilidad bruta - gastos)', '', '', '', totales.resultado.toFixed(2)]]);
+  res.json({ ...rg, agrupar, periodos, totales, top_productos: top, combos, gastos_compras: gas });
 }));
 
 /* Pedidos por estatus (de los pedidos hechos en el rango) */
 router.get('/estatus', wrap(async (req, res) => {
-  const rg = rango(req, res); if (!rg) return;
+  const rg = await resolverPeriodo(req, res); if (!rg) return;
   const { rows } = await db.query(`SELECT p.estatus, count(*)::int AS n FROM pedidos p WHERE ${FECHA} BETWEEN $1 AND $2 GROUP BY p.estatus`, [rg.desde, rg.hasta]);
   const estatus = ESTATUS.map((e) => ({ estatus: e, pedidos: (rows.find((x) => x.estatus === e) || { n: 0 }).n }));
   const total = estatus.reduce((a, x) => a + x.pedidos, 0);

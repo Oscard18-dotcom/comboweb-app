@@ -30,7 +30,7 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
   try {
     const login = async (c) => (await call('POST', '/api/auth/login', { correo: c, password: process.env.SEED_PASSWORD })).j.token;
     const admin = await login('admin@encombo.test'), cocina = await login('cocina@encombo.test');
-    const mk = async (n) => { const r = await call('POST', '/api/auth/register', { nombre: 'Cliente P9' + n, correo: `p9${n}${R}@prueba.test`, password: 'secreta123' }); clientes.push(r.j.usuario.id); return r.j.token; };
+    const mk = async (n) => { const r = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre: 'Cliente P9' + n, correo: `p9${n}${R}@prueba.test`, password: 'secreta123' }); clientes.push(r.j.usuario.id); return r.j.token; };
     const cli = await mk('a'), otro = await mk('b');
     const cat = (await call('GET', '/api/catalogo')).j, gal = cat.productos.find((p) => p.nombre === 'Galleta').id, pres = undefined;
     const base = 30 + Math.floor(Math.random() * 40); let k = 0;

@@ -33,7 +33,7 @@ const stockDe = async (id) => Number((await q('SELECT stock FROM insumos WHERE i
   try {
     const login = async (c) => (await call('POST', '/api/auth/login', { correo: c, password: process.env.SEED_PASSWORD })).j.token;
     const admin = await login('admin@encombo.test'), almacen = await login('almacen@encombo.test'), cocina = await login('cocina@encombo.test');
-    const reg = await call('POST', '/api/auth/register', { nombre: 'Cliente P7', correo: `p7${R}@prueba.test`, password: 'secreta123' });
+    const reg = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre: 'Cliente P7', correo: `p7${R}@prueba.test`, password: 'secreta123' });
     cliente = reg.j.usuario.id; const tcli = reg.j.token;
     const harina = (await q("SELECT id FROM insumos WHERE nombre='Harina'"))[0].id;
     const azucar = (await q("SELECT id FROM insumos WHERE nombre='Azúcar'"))[0].id;
@@ -43,7 +43,10 @@ const stockDe = async (id) => Number((await q('SELECT stock FROM insumos WHERE i
     // ---- Permisos: solo el administrador ----
     for (const [n, tok] of [['sin sesión', null], ['cliente', tcli], ['cocina', cocina], ['almacén', almacen]]) {
       const esperado = tok ? 403 : 401;
-      for (const [m, p] of [['GET', '/api/proveedores'], ['POST', '/api/proveedores'], ['DELETE', '/api/proveedores/1'], ['GET', '/api/pedidos-proveedor'], ['POST', '/api/pedidos-proveedor'], ['POST', '/api/pedidos-proveedor/1/recibir'], ['GET', '/api/pedidos-proveedor/sugerencias']]) {
+      // Almacén solo queda fuera de lo que es exclusivo del administrador (proveedores, recibir, cancelar, aprobar, rechazar)
+      const lista = [['GET', '/api/proveedores'], ['POST', '/api/proveedores'], ['DELETE', '/api/proveedores/1'], ['POST', '/api/pedidos-proveedor/1/recibir'], ['POST', '/api/pedidos-proveedor/1/cancelar'], ['POST', '/api/pedidos-proveedor/1/aprobar'], ['POST', '/api/pedidos-proveedor/1/rechazar']];
+      if (n !== 'almacén') lista.push(['GET', '/api/pedidos-proveedor'], ['POST', '/api/pedidos-proveedor'], ['GET', '/api/pedidos-proveedor/sugerencias'], ['GET', '/api/pedidos-proveedor/proveedores'], ['POST', '/api/pedidos-proveedor/cotizar']);
+      for (const [m, p] of lista) {
         const r = await call(m, p, m === 'GET' ? undefined : {}, tok);
         t(`${n}: ${m} ${p} → ${esperado}`, r.s === esperado, String(r.s));
       }

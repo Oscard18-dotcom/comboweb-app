@@ -40,7 +40,7 @@ const mondayOf = (iso) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate
     const login = async (c) => (await call('POST', '/api/auth/login', { correo: c, password: process.env.SEED_PASSWORD })).j.token;
     const admin = await login('admin@encombo.test'), almacen = await login('almacen@encombo.test'), cocina = await login('cocina@encombo.test');
     const idCocina = (await q("SELECT id FROM usuarios WHERE correo='cocina@encombo.test'"))[0].id;
-    const reg = async (nombre, tag) => { const r = await call('POST', '/api/auth/register', { nombre, correo: `${tag}${R}@prueba.test`, password: 'secreta123' }); clientes.push(r.j.usuario.id); return { token: r.j.token, id: r.j.usuario.id, correo: `${tag}${R}@prueba.test` }; };
+    const reg = async (nombre, tag) => { const r = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre, correo: `${tag}${R}@prueba.test`, password: 'secreta123' }); clientes.push(r.j.usuario.id); return { token: r.j.token, id: r.j.usuario.id, correo: `${tag}${R}@prueba.test` }; };
     const A = await reg('Ana <b>López</b> & "Co"', 'a5'), Bc = await reg('Beto Ruiz', 'b5'), Rep = await reg('Cliente Reportes', 'r5');
     const D = svc.addDays(svc.todayMX(), 10 + Math.floor(Math.random() * 40));
     const cat = (await call('GET', '/api/catalogo')).j; const P = (n) => cat.productos.find((p) => p.nombre === n).id; const PRES = undefined;
@@ -250,7 +250,7 @@ const mondayOf = (iso) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate
     t('productos más vendidos', vd.top_productos[0].nombre === 'Cupcake' && vd.top_productos[0].piezas === 29 && near(vd.top_productos[0].ventas, 725));
     r = await call('GET', `/api/reportes/ventas?desde=${svc.addDays(M1, -20)}&hasta=${svc.addDays(M1, -10)}`, undefined, admin); t('un rango sin ventas: lista vacía y totales en cero', r.s === 200 && r.j.periodos.length === 0 && r.j.totales.ventas === 0 && r.j.totales.margen_pct === 0);
     r = await call('GET', '/api/reportes/ventas', undefined, admin); t('sin parámetros: los últimos 30 días', r.s === 200 && r.j.hasta === hoy && r.j.desde === svc.addDays(hoy, -29));
-    for (const [n, qs] of [['desde posterior a hasta', 'desde=2026-05-02&hasta=2026-05-01'], ['fecha mal escrita', 'desde=ayer'], ['más de un año', `desde=${svc.addDays(hoy, -400)}&hasta=${hoy}`], ['agrupar por algo desconocido', 'agrupar=año'], ['intento de inyección SQL', "agrupar=day';DROP TABLE pedidos;--"]]) {
+    for (const [n, qs] of [['desde posterior a hasta', 'desde=2026-05-02&hasta=2026-05-01'], ['fecha mal escrita', 'desde=ayer'], ['más de 5 años', `periodo=rango&desde=${svc.addDays(hoy, -2200)}&hasta=${hoy}`], ['agrupar por algo desconocido', 'agrupar=año'], ['intento de inyección SQL', "agrupar=day';DROP TABLE pedidos;--"]]) {
       r = await call('GET', `/api/reportes/ventas?${qs}`, undefined, admin); t(`ventas rechaza: ${n}`, r.s === 400, r.s);
     }
     t('la tabla de pedidos sigue intacta tras el intento de inyección', (await sq('SELECT count(*)::int n FROM pedidos')).n >= 5);
@@ -263,7 +263,7 @@ const mondayOf = (iso) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate
     r = await call('GET', `/api/reportes/ventas?desde=${M1}&hasta=${M2}&formato=csv`, undefined, admin);
     const lineas = r.texto.split('\r\n').filter(Boolean);
     t('CSV de ventas: tipo, descarga, BOM y encabezado', /text\/csv/.test(r.tipo) && /attachment; filename="ventas-/.test(r.h.get('content-disposition')) && r.texto.charCodeAt(0) === 0xFEFF && lineas[0].replace('\uFEFF', '') === 'Periodo,Pedidos,Ventas,Costo de insumos,Utilidad bruta');
-    t('CSV de ventas: filas con 2 decimales y renglón TOTAL', lineas.length === 6 && lineas[2] === `${d2},1,250.50,2.20,248.30` && lineas[5] === 'TOTAL,4,730.50,8.80,721.70', lineas.join(' | '));
+    t('CSV de ventas: filas con 2 decimales y renglón TOTAL', lineas.length === 8 && lineas[2] === `${d2},1,250.50,2.20,248.30` && lineas[5] === 'TOTAL,4,730.50,8.80,721.70' && lineas[6] === 'Gastos de compras a proveedores,0,,0.00,' && lineas[7] === 'Resultado (utilidad bruta - gastos),,,,721.70', lineas.join(' | '));
     r = await call('GET', '/api/reportes/existencias?formato=csv', undefined, admin);
     t('CSV: un nombre que empieza con "=" no se ejecuta como fórmula y las comas/comillas se escapan', r.texto.includes(`"'=Test5 ${R},""x"""`), r.texto.split('\r\n').find((l) => l.includes('Test5')));
     r = await call('GET', `/api/reportes/estatus?desde=${M1}&hasta=${M2}&formato=csv`, undefined, admin); t('CSV de pedidos por estatus', /text\/csv/.test(r.tipo) && r.texto.includes('Entregado,2') && r.texto.includes('TOTAL,4'));

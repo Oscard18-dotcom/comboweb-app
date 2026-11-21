@@ -26,7 +26,7 @@ const correos = [];
   mail.reemplazar({ nombre: 'prueba', async enviar(m) { correos.push(m); } });
   try {
     const c1 = `rec${R}@prueba.test`, c2 = `rec2${R}@prueba.test`;
-    const reg = async (correo, nombre) => { const r = await call('POST', '/api/auth/register', { nombre, correo, password: 'vieja1234' }); ids.push(r.j.usuario.id); return r.j; };
+    const reg = async (correo, nombre) => { const r = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre, correo, password: 'vieja1234' }); ids.push(r.j.usuario.id); return r.j; };
     const u1 = await reg(c1, 'Cliente <b>Recupera</b>'), u2 = await reg(c2, 'Cliente Inactivo');
     await db.query('UPDATE usuarios SET activo=false WHERE id=$1', [u2.usuario.id]);
     const MENSAJE = 'Si el correo está registrado';

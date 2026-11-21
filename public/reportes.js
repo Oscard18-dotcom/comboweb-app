@@ -10,40 +10,23 @@
     const { e, api, chipC } = H;
     const raiz = e('div'); cont.append(raiz);
     const kp = (t, v, color) => e('div', { class: 'card' }, e('small', { class: 'mu' }, t), e('b', { style: color ? 'color:' + color : '' }, v));
-    let periodo = 'hoy', desde = '', hasta = '';
-    const NOM = { hoy: 'Día (hoy)', semana: 'Semana', mes: 'Mes', anio: 'Año', total: 'Histórico total', ultimos30: 'Últimos 30 días', rango: 'Elegir fechas…' };
     const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
     const etq = (p, u) => { const [f, h] = p.split(' '), [y, m, d] = f.split('-'); return u === 'hour' ? h : u === 'day' ? `${d}/${m}` : u === 'week' ? `Semana del ${d}/${m}` : u === 'month' ? `${MES[Number(m) - 1]} ${y}` : y; };
-    const hoyLocal = () => iso(new Date());
-    const aviso = e('p', { class: 'err', role: 'alert' });
-    const inDesde = e('input', { type: 'date', 'aria-label': 'Fecha inicial', 'data-desde': '1', onchange: (ev) => { desde = ev.target.value; } });
-    const inHasta = e('input', { type: 'date', 'aria-label': 'Fecha final', 'data-hasta': '1', onchange: (ev) => { hasta = ev.target.value; } });
-    const aplicar = e('button', { type: 'button', class: 'mini', 'data-aplicar': '1', onclick: () => {
-      desde = inDesde.value; hasta = inHasta.value;
-      if (!desde || !hasta) { aviso.textContent = 'Elige la fecha inicial y la final.'; return; }
-      if (desde > hasta) { aviso.textContent = 'La fecha inicial debe ser anterior o igual a la final.'; return; }
-      aviso.textContent = ''; cargarVentas();
-    } }, 'Aplicar');
-    const fechas = e('div', { class: 'row filtros', 'data-fechas': '1', style: 'align-items:end' }, e('label', {}, 'Desde', inDesde), e('label', {}, 'Hasta', inHasta), aplicar);
-    fechas.hidden = true;
-    const menu = e('select', { 'aria-label': 'Periodo de ventas', 'data-periodo': '1', onchange: (ev) => {
-      periodo = ev.target.value; fechas.hidden = periodo !== 'rango'; aviso.textContent = '';
-      if (periodo === 'rango') { if (!hasta) { hasta = hoyLocal(); desde = mas(hasta, -6); } inDesde.value = desde; inHasta.value = hasta; inDesde.max = inHasta.max = hoyLocal(); }
-      cargarVentas();
-    } }, ...Object.entries(NOM).map(([k, n]) => e('option', { value: k }, n)));
-    menu.value = periodo;
+    const sel = H.menuPeriodo({ inicial: 'hoy', etiqueta: 'Periodo de ventas' }, () => cargarVentas());
     const contenido = e('div');
-    const panelV = e('section', { class: 'card tw' }, e('h3', {}, 'Ventas por periodo'), e('div', { class: 'row filtros', style: 'align-items:end' }, e('label', {}, 'Periodo', menu)), fechas, aviso, contenido);
+    const panelV = e('section', { class: 'card tw' }, e('h3', {}, 'Ventas por periodo'), sel.el, contenido);
     let seqV = 0;
     async function cargarVentas() {
       const mi = ++seqV;
       try {
-        const v = await api('/reportes/ventas-periodo?periodo=' + periodo + (periodo === 'rango' ? `&desde=${desde}&hasta=${hasta}` : ''));
+        if (!sel.listo()) return;
+        const v = await api('/reportes/ventas-periodo?' + sel.consulta());
         if (mi !== seqV) return;
         const max = Math.max(1, ...v.serie.map((x) => x.ventas));
         contenido.replaceChildren(
           e('p', { class: 'mu' }, `Del ${fd(v.desde)} al ${fd(v.hasta)} · cifras en pesos mexicanos (MXN)`),
-          e('div', { class: 'kp', 'data-ventas-periodo': '1' }, kp('Ventas', mx(v.ventas)), kp('Pedidos', String(v.pedidos)), kp('Ticket promedio', mx(v.ticket_promedio)), kp('Utilidad bruta', mx(v.utilidad)), kp('Margen', v.margen_pct + ' %')),
+          e('div', { class: 'kp', 'data-ventas-periodo': '1' }, kp('Ventas', mx(v.ventas)), kp('Pedidos', String(v.pedidos)), kp('Ticket promedio', mx(v.ticket_promedio)), kp('Utilidad bruta', mx(v.utilidad)), kp('Margen', v.margen_pct + ' %'), kp('Gastos de compras', mx(v.gastos), v.gastos ? '#B3261E' : '')),
+          v.gastos_detalle && v.gastos_detalle.length ? e('p', { class: 'mu', 'data-gastos': '1' }, 'Compras a proveedores: ' + v.gastos_detalle.map((g) => `${g.folio} ${g.proveedor} ${mx(g.total)}`).join(' · ')) : null,
           v.serie.length ? e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, e('th', {}, v.unidad === 'hour' ? 'Hora' : 'Periodo'), e('th', { class: 'n' }, 'Pedidos'), e('th', { class: 'n' }, 'Ventas'), e('th', {}, ''))),
             e('tbody', {}, ...v.serie.map((x) => e('tr', {}, e('td', {}, etq(x.periodo, v.unidad)), e('td', { class: 'n' }, String(x.pedidos)), mon(e, x.ventas),
               e('td', { style: 'width:30%' }, e('span', { style: `display:block;height:8px;border-radius:4px;background:var(--pri);width:${Math.max(2, Math.round(x.ventas / max * 100))}%` })))),
@@ -65,7 +48,7 @@
       const total = d.ventas_7_dias.reduce((a, x) => ({ p: a.p + x.pedidos, v: a.v + x.ventas }), { p: 0, v: 0 });
       raiz.replaceChildren(
         e('div', { class: 'kp' }, kp('Ventas de hoy', mx(d.ventas_hoy)), kp('Pedidos de hoy', String(d.pedidos_hoy)), kp('Entregas pendientes hoy', String(d.entregas_pendientes_hoy), d.entregas_pendientes_hoy ? '#6A6141' : ''),
-          kp('Insumos en reorden', String(d.insumos_en_reorden), d.insumos_en_reorden ? '#B3261E' : ''), kp('Pedidos a proveedor por recibir', String(d.pedidos_proveedor_por_recibir || 0))),
+          kp('Insumos en reorden', String(d.insumos_en_reorden), d.insumos_en_reorden ? '#B3261E' : ''), kp('Pedidos a proveedor por recibir', String(d.pedidos_proveedor_por_recibir || 0)), kp('Gastos de hoy (compras)', mx(d.gastos_hoy || 0), d.gastos_hoy ? '#B3261E' : ''), kp('Solicitudes por aprobar', String(d.solicitudes_pendientes || 0), d.solicitudes_pendientes ? '#6A6141' : '')),
         panelV,
         e('div', { class: 'card' }, e('h3', {}, 'Pedidos por estatus'), e('div', { class: 'row', style: 'margin:0' }, ...Object.entries(d.por_estatus).map(([k, v]) => e('span', {}, chipC(k, ST[k]), ` ${v}`)))),
         d.pagos_en_revision ? e('div', { class: 'alerta', role: 'alert' }, e('b', {}, `⚠ ${d.pagos_en_revision} pago(s) cobrado(s) sin pedido: requieren reembolso o atención manual desde el panel de la pasarela de pago.`),
@@ -94,36 +77,42 @@
   Personal.registrar('rep', 'Reportes', ['admin'], 5, (cont, H) => {
     const { e, api } = H;
     const hoy = iso(new Date());
-    let tipo = 'ventas', desde = mas(hoy, -29), hasta = hoy, agrupar = 'dia';
+    let tipo = 'ventas', agrupar = 'auto';
+    const sel = H.menuPeriodo({ inicial: 'ultimos30', etiqueta: 'Periodo' }, () => generar());
     const resultado = e('div', { class: 'imprimible' }), err = e('div', { class: 'errbox', role: 'alert' });
     const tabs = e('div', { class: 'seg noprint' });
-    const fDesde = e('input', { type: 'date', value: desde, 'aria-label': 'Desde', onchange: (ev) => { desde = ev.target.value; } });
-    const fHasta = e('input', { type: 'date', value: hasta, 'aria-label': 'Hasta', onchange: (ev) => { hasta = ev.target.value; } });
-    const fAgr = e('select', { 'aria-label': 'Agrupar por', onchange: (ev) => { agrupar = ev.target.value; } }, e('option', { value: 'dia' }, 'Por día'), e('option', { value: 'semana' }, 'Por semana'), e('option', { value: 'mes' }, 'Por mes'));
+    const fAgr = e('select', { 'aria-label': 'Agrupar por', onchange: (ev) => { agrupar = ev.target.value; } }, e('option', { value: 'auto' }, 'Agrupar: automático'), e('option', { value: 'dia' }, 'Por día'), e('option', { value: 'semana' }, 'Por semana'), e('option', { value: 'mes' }, 'Por mes'));
     const bGen = e('button', { class: 'btn', type: 'submit' }, 'Generar');
     const NOMBRES = { ventas: 'Ventas por periodo', estatus: 'Pedidos por estatus', existencias: 'Existencias de inventario' };
     const url = (extra = '') => tipo === 'existencias' ? '/reportes/existencias' + (extra ? '?' + extra : '')
-      : `/reportes/${tipo}?desde=${desde}&hasta=${hasta}` + (tipo === 'ventas' ? `&agrupar=${agrupar}` : '') + (extra ? '&' + extra : '');
-    const form = e('form', { class: 'row filtros noprint', onsubmit: (ev) => { ev.preventDefault(); generar(); } }, fDesde, fHasta, fAgr, bGen,
-      e('button', { class: 'btn s', type: 'button', onclick: async () => { err.replaceChildren(); try { await H.descargar(url('formato=csv'), `${tipo}-${hasta}.csv`); } catch (er) { err.replaceChildren(e('div', {}, er.message)); } } }, 'Descargar para Excel (CSV)'),
+      : `/reportes/${tipo}?${sel.consulta()}` + (tipo === 'ventas' && agrupar !== 'auto' ? `&agrupar=${agrupar}` : '') + (extra ? '&' + extra : '');
+    const form = e('form', { class: 'row filtros noprint', style: 'align-items:end', onsubmit: (ev) => { ev.preventDefault(); generar(); } }, fAgr, bGen,
+      e('button', { class: 'btn s', type: 'button', onclick: async () => { err.replaceChildren(); try { await H.descargar(url('formato=csv'), `${tipo}-${hoy}.csv`); } catch (er) { err.replaceChildren(e('div', {}, er.message)); } } }, 'Descargar para Excel (CSV)'),
       e('button', { class: 'btn s', type: 'button', onclick: () => window.print() }, 'Imprimir / guardar PDF'));
-    const pestanas = () => tabs.replaceChildren(...Object.entries(NOMBRES).map(([k, n]) => e('button', { type: 'button', class: k === tipo ? 'on' : '', onclick: () => { tipo = k; pestanas(); fAgr.hidden = k !== 'ventas'; fDesde.hidden = fHasta.hidden = k === 'existencias'; generar(); } }, n)));
+    const pestanas = () => tabs.replaceChildren(...Object.entries(NOMBRES).map(([k, n]) => e('button', { type: 'button', class: k === tipo ? 'on' : '', onclick: () => { tipo = k; pestanas(); fAgr.hidden = k !== 'ventas'; sel.el.parentNode.hidden = k === 'existencias'; generar(); } }, n)));
     pestanas();
-    cont.append(tabs, form, err, resultado);
+    cont.append(tabs, e('div', { class: 'noprint' }, sel.el), form, err, resultado);
 
     const th = (t, n) => e('th', { class: n ? 'n' : '' }, t);
-    const etiqueta = (p) => agrupar === 'mes' ? new Date(p + 'T12:00:00').toLocaleDateString('es-MX', { month: 'long', year: 'numeric' }) : agrupar === 'semana' ? 'Semana del ' + fd(p) : fd(p);
+    let agrActual = 'dia';
+    const etiqueta = (p) => agrActual === 'mes' ? new Date(p + 'T12:00:00').toLocaleDateString('es-MX', { month: 'long', year: 'numeric' }) : agrActual === 'semana' ? 'Semana del ' + fd(p) : fd(p);
     const titulo = (t, sub) => [e('h3', { class: 'reporte-tit' }, 'EN COMBO · ' + t), e('p', { class: 'reporte-tit mu' }, sub)];
     async function generar() {
       err.replaceChildren(); resultado.replaceChildren(e('p', { class: 'mu' }, 'Generando…'));
       try {
+        if (tipo !== 'existencias' && !sel.listo()) { resultado.replaceChildren(e('p', { class: 'mu' }, 'Elige las fechas y pulsa Aplicar.')); return; }
         const d = await api(url());
         if (tipo === 'ventas') {
+          agrActual = d.agrupar;
           resultado.replaceChildren(e('div', { class: 'card tw' }, ...titulo('Ventas por periodo', `Del ${fd(d.desde)} al ${fd(d.hasta)} · cifras en pesos mexicanos (MXN)`),
             d.periodos.length ? e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, th('Periodo'), th('Pedidos', 1), th('Ventas', 1), th('Costo de insumos', 1), th('Utilidad bruta', 1))),
               e('tbody', {}, ...d.periodos.map((x) => e('tr', {}, e('td', {}, etiqueta(x.periodo)), e('td', { class: 'n' }, String(x.pedidos)), mon(e, x.ventas), mon(e, x.costo), mon(e, x.utilidad))),
                 e('tr', { class: 'total' }, e('td', {}, 'Suma'), e('td', { class: 'n' }, String(d.totales.pedidos)), mon(e, d.totales.ventas), mon(e, d.totales.costo), mon(e, d.totales.utilidad))))
               : e('p', { class: 'mu' }, 'No hay ventas en este periodo.'),
+            d.periodos.length ? e('table', { class: 'contable', 'data-gastos-reporte': '1' }, e('tbody', {},
+              e('tr', {}, e('td', {}, 'Utilidad bruta'), mon(e, d.totales.utilidad)),
+              ...d.gastos_compras.detalle.map((g) => e('tr', {}, e('td', {}, `Compra ${g.folio} · ${g.proveedor} · ${fd(g.fecha)}`), mon(e, -g.total))),
+              e('tr', { class: 'total' }, e('td', {}, 'Resultado (utilidad bruta − gastos de compras)'), mon(e, d.totales.resultado)))) : null,
             d.periodos.length ? e('p', { class: 'mu' }, `Margen de utilidad bruta: ${d.totales.margen_pct} %. El costo usa los costos unitarios vigentes de los insumos.`) : null),
             d.combos && d.totales.pedidos ? e('div', { class: 'card tw' }, e('h3', {}, 'Ventas por combo'), e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, th('Combo'), th('Contenido'), th('Pedidos', 1), th('Piezas', 1), th('Ventas', 1))),
               e('tbody', {}, ...d.combos.map((x) => e('tr', {}, e('td', {}, x.nombre), e('td', {}, x.contenido), e('td', { class: 'n' }, String(x.pedidos)), e('td', { class: 'n' }, String(x.piezas)), mon(e, x.ventas)))))) : null,
@@ -141,6 +130,6 @@
         }
       } catch (er) { resultado.replaceChildren(); err.replaceChildren(e('div', {}, er.message)); }
     }
-    fDesde.hidden = false; fAgr.hidden = false; generar();
+    fAgr.hidden = false; generar();
   });
 })();

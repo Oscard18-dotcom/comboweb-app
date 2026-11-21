@@ -21,11 +21,44 @@ const Personal = (() => {
   const limpiar = () => { timers.forEach(clearInterval); timers = []; };
   const cada = (ms, fn) => { timers.push(setInterval(fn, ms)); };
 
+  /* Selector de periodo COMÚN a Dashboard y Reportes: Día, Semana, Mes, Año, Últimos 30 días, Histórico y "Elegir fechas".
+     El calendario (Desde/Hasta) solo aparece cuando se elige "Elegir fechas". alCambiar() se llama al elegir otra opción
+     o al pulsar Aplicar. consulta() devuelve "periodo=...[&desde=..&hasta=..]" listo para la URL. */
+  const NOM_PERIODO = { hoy: 'Día (hoy)', semana: 'Semana', mes: 'Mes', anio: 'Año', ultimos30: 'Últimos 30 días', total: 'Histórico total', rango: 'Elegir fechas…' };
+  function menuPeriodo(opc, alCambiar) {
+    opc = opc || {};
+    const pad = (n) => String(n).padStart(2, '0'), iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const hoy = () => iso(new Date()), menos = (f, n) => { const d = new Date(f + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
+    let periodo = opc.inicial || 'hoy', desde = '', hasta = '';
+    const aviso = e('p', { class: 'err', role: 'alert' });
+    const inDesde = e('input', { type: 'date', 'aria-label': 'Fecha inicial', 'data-desde': '1' });
+    const inHasta = e('input', { type: 'date', 'aria-label': 'Fecha final', 'data-hasta': '1' });
+    const aplicar = e('button', { type: 'button', class: 'mini', 'data-aplicar': '1', onclick: () => {
+      if (!inDesde.value || !inHasta.value) { aviso.textContent = 'Elige la fecha inicial y la final.'; return; }
+      if (inDesde.value > inHasta.value) { aviso.textContent = 'La fecha inicial debe ser anterior o igual a la final.'; return; }
+      desde = inDesde.value; hasta = inHasta.value; aviso.textContent = ''; alCambiar();
+    } }, 'Aplicar');
+    const fechas = e('div', { class: 'row filtros', 'data-fechas': '1', style: 'align-items:end' }, e('label', {}, 'Desde', inDesde), e('label', {}, 'Hasta', inHasta), aplicar);
+    fechas.hidden = periodo !== 'rango';
+    const menu = e('select', { 'aria-label': opc.etiqueta || 'Periodo', 'data-periodo': '1', onchange: (ev) => {
+      periodo = ev.target.value; fechas.hidden = periodo !== 'rango'; aviso.textContent = '';
+      if (periodo === 'rango') {
+        if (!hasta) { hasta = hoy(); desde = menos(hasta, -6); }
+        inDesde.value = desde; inHasta.value = hasta; inDesde.max = inHasta.max = hoy();
+        return; // con fechas se espera a "Aplicar"
+      }
+      alCambiar();
+    } }, ...(opc.opciones || ['hoy', 'semana', 'mes', 'anio', 'ultimos30', 'total', 'rango']).map((k) => e('option', { value: k }, NOM_PERIODO[k])));
+    menu.value = periodo;
+    const el = e('div', {}, e('div', { class: 'row filtros', style: 'align-items:end' }, e('label', {}, opc.etiqueta || 'Periodo', menu)), fechas, aviso);
+    return { el, consulta: () => 'periodo=' + periodo + (periodo === 'rango' ? `&desde=${desde}&hasta=${hasta}` : ''), valor: () => periodo, listo: () => periodo !== 'rango' || (desde && hasta) };
+  }
+
   function iniciar(ctx) {
     X = ctx; limpiar();
     const rol = ctx.usuario.rol, r = document.querySelector('#staff');
     r.replaceChildren(); r.hidden = false;
-    const H = { api: ctx.api, e, num, costo, fecha, campo, chipC, enviar, cada, usuario: ctx.usuario, money: ctx.money, descargar: ctx.descargar };
+    const H = { api: ctx.api, e, num, costo, fecha, campo, chipC, enviar, cada, usuario: ctx.usuario, money: ctx.money, descargar: ctx.descargar, menuPeriodo };
     const tabs = modulos.filter((m) => m.roles.includes(rol)).sort((a, b) => a.orden - b.orden);
     if (!tabs.length) { r.append(e('div', { class: 'card narrow' }, e('p', {}, 'Tu rol no tiene pantallas disponibles.'))); return; }
     const nav = e('div', { class: 'seg noprint' }), cont = e('div');

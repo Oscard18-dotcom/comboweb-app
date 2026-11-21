@@ -9,7 +9,7 @@ async function auth(req, res, next) {
     const token = h.startsWith('Bearer ') ? h.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'Inicia sesión para continuar.' });
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    const { rows } = await db.query('SELECT id,nombre,correo,rol,activo,token_version FROM usuarios WHERE id=$1', [payload.id]);
+    const { rows } = await db.query('SELECT id,nombre,correo,rol,activo,token_version,privacidad_version FROM usuarios WHERE id=$1', [payload.id]);
     // Los tokens anteriores al Sprint 6 no traen versión: cuentan como versión 0
     if (!rows[0] || !rows[0].activo || (payload.v ?? 0) !== rows[0].token_version) return res.status(401).json({ error: 'Sesión inválida.' });
     req.user = rows[0];

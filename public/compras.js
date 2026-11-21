@@ -2,18 +2,20 @@
 (() => {
   const fd = (f) => (f ? f.split('-').reverse().join('/') : '—');
 
-  Personal.registrar('compras', 'Pedidos a proveedor', ['admin'], 3.5, (cont, H) => {
+  Personal.registrar('compras', 'Pedidos a proveedor', ['almacen', 'admin'], 3.5, (cont, H) => {
     const { e, api, num, fecha, campo, chipC, enviar, usuario } = H;
+    const esAdmin = usuario.rol === 'admin';
+    const mx = (n) => Number(n).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
     const caja = () => e('div', { class: 'errbox', role: 'alert' });
     const ok = (t) => e('p', { class: 'okmsg', role: 'status' }, t);
     const nav = e('div', { class: 'seg noprint' }), panel = e('div');
-    const SUBS = [['pedidos', 'Pedidos enviados'], ['nuevo', 'Nuevo pedido'], ['prov', 'Proveedores']];
+    const SUBS = esAdmin ? [['pedidos', 'Pedidos y solicitudes'], ['nuevo', 'Nuevo pedido'], ['prov', 'Proveedores']] : [['pedidos', 'Mis solicitudes'], ['nuevo', 'Solicitar reabastecimiento']];
     const ir = (k) => {
       nav.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.s === k));
       panel.replaceChildren(); ({ pedidos, nuevo, prov })[k]();
     };
     SUBS.forEach(([k, n]) => nav.append(e('button', { type: 'button', 'data-s': k, onclick: () => ir(k) }, n)));
-    cont.append(e('h2', {}, 'Pedidos a proveedor'), nav, panel);
+    cont.append(e('h2', {}, esAdmin ? 'Pedidos a proveedor' : 'Reabastecimiento'), esAdmin ? null : e('p', { class: 'mu' }, 'Aquí pides insumos al proveedor. Tu solicitud llega a administración, que decide si se aprueba la compra.'), nav, panel);
 
     // Confirmación en pantalla (sin ventanas emergentes): devuelve una tarjeta con Sí / No
     const confirmar = (mensaje, etiqueta, fn, cancelar) => {
@@ -27,32 +29,44 @@
       let filtro = '', lista = [];
       const detalle = e('div'), tabla = e('div'), msg = e('div');
       const sel = e('select', { 'aria-label': 'Filtrar por estado', onchange: () => { filtro = sel.value; cargar(); } },
-        e('option', { value: '' }, 'Todos'), e('option', { value: 'enviado' }, 'Enviados (por recibir)'), e('option', { value: 'recibido' }, 'Recibidos'), e('option', { value: 'cancelado' }, 'Cancelados'));
-      const chipEstado = (p) => chipC({ enviado: 'Enviado', recibido: 'Recibido', cancelado: 'Cancelado' }[p.estado], { enviado: '#3F210E', recibido: '#6A6141', cancelado: '#7D756B' }[p.estado]);
+        e('option', { value: '' }, 'Todos'), e('option', { value: 'solicitado' }, 'Solicitudes por aprobar'), e('option', { value: 'rechazado' }, 'Rechazadas'), e('option', { value: 'enviado' }, 'Enviados (por recibir)'), e('option', { value: 'recibido' }, 'Recibidos'), e('option', { value: 'cancelado' }, 'Cancelados'));
+      const chipEstado = (p) => chipC({ solicitado: 'Por aprobar', rechazado: 'Rechazada', enviado: 'Enviado', recibido: 'Recibido', cancelado: 'Cancelado' }[p.estado], { solicitado: '#6A6141', rechazado: '#B3261E', enviado: '#3F210E', recibido: '#6A6141', cancelado: '#7D756B' }[p.estado]);
       const chipCorreo = (s) => (!s ? '—' : s === 'enviada' ? chipC('Correo enviado', '#6A6141') : s === 'error' || s === 'fallida' ? chipC('Correo con error', '#B3261E') : chipC('Enviando…', '#3F210E'));
       async function cargar() {
         try {
           lista = (await api('/pedidos-proveedor' + (filtro ? '?estado=' + filtro : ''))).pedidos;
-          tabla.replaceChildren(e('div', { class: 'card tw' }, lista.length ? e('table', {}, e('thead', {}, e('tr', {}, ['Folio', 'Fecha', 'Proveedor', 'Insumos', 'Estado', 'Stock', 'Correo', ''].map((x) => e('th', {}, x)))),
+          tabla.replaceChildren(e('div', { class: 'card tw' }, lista.length ? e('table', {}, e('thead', {}, e('tr', {}, ['Folio', 'Fecha', 'Proveedor', 'Insumos', 'Total', 'Estado', 'Stock', 'Correo', ''].map((x) => e('th', {}, x)))),
             e('tbody', {}, lista.map((p) => e('tr', {}, e('td', {}, e('b', {}, p.folio)), e('td', {}, fecha(p.creado_en)), e('td', {}, p.proveedor),
-              e('td', {}, p.items.map((i) => `${i.nombre} ${num(i.cantidad)} ${i.unidad}`).join(', ')), e('td', {}, chipEstado(p)),
-              e('td', {}, p.estado === 'cancelado' ? '—' : p.stock_aplicado ? 'Sumado' : 'Falta sumar'), e('td', {}, chipCorreo(p.correo_estado)),
+              e('td', {}, p.items.map((i) => `${i.nombre} ${num(i.cantidad)} ${i.unidad}`).join(', ')), e('td', { class: 'n' }, mx(p.total)), e('td', {}, chipEstado(p)),
+              e('td', {}, ['cancelado', 'solicitado', 'rechazado'].includes(p.estado) ? '—' : p.stock_aplicado ? 'Sumado' : 'Falta sumar'), e('td', {}, chipCorreo(p.correo_estado)),
               e('td', { class: 'acc' }, e('button', { class: 'mini', type: 'button', onclick: () => ver(p.id) }, 'Ver'),
-                p.estado === 'enviado' ? e('button', { class: 'mini', type: 'button', onclick: () => preguntarRecibir(p) }, 'Marcar recibido') : null,
-                p.estado === 'enviado' && !p.stock_aplicado ? e('button', { class: 'mini', type: 'button', onclick: () => preguntarCancelar(p) }, 'Cancelar') : null)))))
-            : e('p', { class: 'mu' }, 'Todavía no hay pedidos. Crea el primero en “Nuevo pedido”.')));
+                esAdmin && p.estado === 'solicitado' ? e('button', { class: 'mini', type: 'button', 'data-aprobar': p.id, onclick: () => preguntarAprobar(p) }, 'Aprobar compra') : null,
+                esAdmin && p.estado === 'solicitado' ? e('button', { class: 'mini', type: 'button', 'data-rechazar': p.id, onclick: () => preguntarRechazar(p) }, 'Rechazar') : null,
+                esAdmin && p.estado === 'enviado' ? e('button', { class: 'mini', type: 'button', onclick: () => preguntarRecibir(p) }, 'Marcar recibido') : null,
+                esAdmin && p.estado === 'enviado' && !p.stock_aplicado ? e('button', { class: 'mini', type: 'button', onclick: () => preguntarCancelar(p) }, 'Cancelar') : null)))))
+            : e('p', { class: 'mu' }, esAdmin ? 'Todavía no hay pedidos. Crea el primero en “Nuevo pedido”.' : 'Todavía no has hecho solicitudes. Crea la primera en “Solicitar reabastecimiento”.')));
         } catch (er) { tabla.replaceChildren(e('p', { class: 'err' }, er.message)); }
       }
       function ver(id) {
         const p = lista.find((x) => x.id === id); if (!p) return;
         const cerrar = e('button', { class: 'btn s', type: 'button', onclick: () => detalle.replaceChildren() }, 'Cerrar');
         detalle.replaceChildren(e('div', { class: 'card' }, e('h3', {}, `Pedido ${p.folio}`),
-          e('dl', { class: 'ficha-dl' }, e('dt', {}, 'Proveedor'), e('dd', {}, `${p.proveedor} (${p.proveedor_correo})`), e('dt', {}, 'Enviado'), e('dd', {}, `${fecha(p.creado_en)} por ${p.usuario || '—'}`),
+          e('dl', { class: 'ficha-dl' }, e('dt', {}, 'Proveedor'), e('dd', {}, `${p.proveedor} (${p.proveedor_correo})`), e('dt', {}, p.estado === 'solicitado' || p.estado === 'rechazado' ? 'Solicitado' : 'Enviado'), e('dd', {}, `${fecha(p.enviado_en || p.creado_en)} por ${p.usuario || '—'}`),
+            p.aprobado_por ? e('dt', {}, p.estado === 'rechazado' ? 'Rechazó' : 'Aprobó') : null, p.aprobado_por ? e('dd', {}, p.aprobado_por) : null, p.motivo_rechazo ? e('dt', {}, 'Motivo') : null, p.motivo_rechazo ? e('dd', {}, p.motivo_rechazo) : null,
             p.fecha_requerida ? e('dt', {}, 'Lo necesitas para') : null, p.fecha_requerida ? e('dd', {}, fd(p.fecha_requerida)) : null, e('dt', {}, 'Nota'), e('dd', {}, p.nota || '—'),
             e('dt', {}, 'Estado'), e('dd', {}, chipEstado(p)), e('dt', {}, 'Stock'), e('dd', {}, p.estado === 'cancelado' ? 'No se sumó (pedido cancelado)' : p.stock_aplicado ? 'Ya se sumó al inventario' : 'Se sumará al marcar el pedido como recibido'),
             p.recibido_en ? e('dt', {}, 'Recibido') : null, p.recibido_en ? e('dd', {}, fecha(p.recibido_en)) : null, e('dt', {}, 'Correo al proveedor'), e('dd', {}, chipCorreo(p.correo_estado))),
-          e('table', {}, e('thead', {}, e('tr', {}, e('th', {}, 'Insumo'), e('th', {}, 'Cantidad pedida'))), e('tbody', {}, p.items.map((i) => e('tr', {}, e('td', {}, i.nombre), e('td', {}, `${num(i.cantidad)} ${i.unidad}`))))), cerrar));
+          e('table', {}, e('thead', {}, e('tr', {}, e('th', {}, 'Insumo'), e('th', {}, 'Cantidad pedida'), e('th', { class: 'n' }, 'Precio unit.'), e('th', { class: 'n' }, 'Importe'))), e('tbody', {}, p.items.map((i) => e('tr', {}, e('td', {}, i.nombre), e('td', {}, `${num(i.cantidad)} ${i.unidad}`), e('td', { class: 'n' }, mx(i.precio_unitario)), e('td', { class: 'n' }, mx(i.subtotal)))),
+            e('tr', { class: 'total' }, e('td', {}, 'Total'), e('td', {}), e('td', {}), e('td', { class: 'n', 'data-total-pedido': '1' }, mx(p.total))))), cerrar));
       }
+      const preguntarAprobar = (p) => detalle.replaceChildren(confirmar(
+        `¿Aprobar la compra ${p.folio} a ${p.proveedor} por ${mx(p.total)}? Se le enviará el pedido por correo y contará como gasto de hoy.`, 'Sí, aprobar y enviar',
+        async () => { await api(`/pedidos-proveedor/${p.id}/aprobar`, { method: 'POST' }); await cargar(); detalle.replaceChildren(e('div', { class: 'card' }, ok(`${p.folio} aprobado y enviado a ${p.proveedor}.`))); }, () => detalle.replaceChildren()));
+      const preguntarRechazar = (p) => {
+        const mot = e('input', { maxlength: 200, placeholder: 'Motivo (opcional)', 'aria-label': 'Motivo del rechazo' }), err = caja(), si = e('button', { class: 'btn', type: 'button' }, 'Sí, rechazar');
+        si.onclick = enviar(si, err, async () => { await api(`/pedidos-proveedor/${p.id}/rechazar`, { method: 'POST', body: { motivo: mot.value || undefined } }); await cargar(); detalle.replaceChildren(e('div', { class: 'card' }, ok(`${p.folio} rechazada.`))); });
+        detalle.replaceChildren(e('div', { class: 'card', role: 'alertdialog' }, e('p', {}, `¿Rechazar la solicitud ${p.folio}? No se enviará nada al proveedor.`), campo('Motivo', mot), err, e('div', { class: 'row' }, si, e('button', { class: 'btn s', type: 'button', onclick: () => detalle.replaceChildren() }, 'No, volver'))));
+      };
       const preguntarRecibir = (p) => detalle.replaceChildren(confirmar(
         p.stock_aplicado ? `¿Marcar ${p.folio} como recibido? El stock ya se había sumado, así que no cambiará.` : `¿Ya llegó ${p.folio}? Al confirmar, los insumos se suman al stock.`, 'Sí, ya llegó',
         async () => { await api(`/pedidos-proveedor/${p.id}/recibir`, { method: 'POST' }); await cargar(); detalle.replaceChildren(e('div', { class: 'card' }, ok(`Listo: ${p.folio} recibido.`))); }, () => detalle.replaceChildren()));
@@ -65,30 +79,37 @@
     /* ===================== NUEVO PEDIDO ===================== */
     async function nuevo() {
       let provs, insumos;
-      try { [provs, insumos] = await Promise.all([api('/proveedores'), api('/inventario')]); } catch (er) { panel.append(e('p', { class: 'err' }, er.message)); return; }
+      try { [provs, insumos] = await Promise.all([api('/pedidos-proveedor/proveedores'), api('/inventario')]); } catch (er) { panel.append(e('p', { class: 'err' }, er.message)); return; }
       provs = provs.proveedores; insumos = insumos.insumos.filter((i) => i.activo);
-      if (!provs.length) { panel.append(e('div', { class: 'card narrow' }, e('p', {}, 'Primero agrega a tu proveedor: necesitamos su correo para poder mandarle el pedido.'), e('button', { class: 'btn', type: 'button', onclick: () => ir('prov') }, 'Agregar proveedor'))); return; }
+      if (!provs.length) { panel.append(e('div', { class: 'card narrow' }, e('p', {}, 'Todavía no hay proveedores registrados' + (esAdmin ? ': agrega a tu proveedor, necesitamos su correo para poder mandarle el pedido.' : '. Pídele a administración que registre al proveedor.')), esAdmin ? e('button', { class: 'btn', type: 'button', onclick: () => ir('prov') }, 'Agregar proveedor') : null)); return; }
       const err = caja(), lineas = e('div'), aviso = e('p', { class: 'aviso', role: 'status' });
       const pv = e('select', { 'aria-label': 'Proveedor', required: true }, e('option', { value: '' }, '— Elige un proveedor —'), ...provs.map((p) => e('option', { value: p.id }, p.nombre)));
       const nota = e('input', { maxlength: 300, placeholder: 'Opcional: horario de entrega, marca…' });
       const provActual = () => provs.find((p) => String(p.id) === pv.value);
-      const opcionesInsumo = () => { const p = provActual(); const ids = p && p.insumos.length ? new Set(p.insumos.map((i) => i.id)) : null; return insumos.filter((i) => !ids || ids.has(i.id)); };
+      const opcionesInsumo = () => { const p = provActual(); const ids = p && p.insumos && p.insumos.length ? new Set(p.insumos.map((i) => i.id)) : null; return insumos.filter((i) => !ids || ids.has(i.id)); };
       function linea(insumoId, cantidad) {
         const s = e('select', { 'aria-label': 'Insumo' }, e('option', { value: '' }, '— Insumo —'), ...opcionesInsumo().map((i) => e('option', { value: i.id }, `${i.nombre} (hay ${num(i.stock)} ${i.unidad})`)));
         const c = e('input', { type: 'number', min: '0', step: 'any', 'aria-label': 'Cantidad', placeholder: 'Cantidad' }), u = e('span', { class: 'mu u' }, '');
+        const pu = e('input', { type: 'number', min: '0', step: 'any', 'aria-label': 'Precio unitario (MXN)', placeholder: 'Precio unit.', 'data-precio': '1' }), im = e('span', { class: 'mu u', 'data-importe': '1' }, '');
         if (insumoId) s.value = String(insumoId); if (cantidad) c.value = String(cantidad);
-        const act = () => { const i = insumos.find((x) => String(x.id) === s.value); u.textContent = i ? i.unidad : ''; }; s.onchange = act; act();
-        const fila = e('div', { class: 'lp' }, s, c, u, e('button', { class: 'mini', type: 'button', 'aria-label': 'Quitar este insumo', onclick: () => fila.remove() }, '✕'));
-        fila.leer = () => ({ insumo_id: s.value, cantidad: c.value });
+        const imp = () => { im.textContent = Number(c.value) > 0 && pu.value !== '' ? mx(Number(c.value) * Number(pu.value)) : ''; total(); };
+        // La cotización arranca con el último costo registrado del insumo; se puede cambiar por el precio real que dé el proveedor
+        const act = () => { const i = insumos.find((x) => String(x.id) === s.value); u.textContent = i ? i.unidad : ''; pu.value = i ? String(i.costo_unitario) : ''; imp(); }; s.onchange = act; c.oninput = imp; pu.oninput = imp;
+        const fila = e('div', { class: 'lp' }, s, c, u, pu, im, e('button', { class: 'mini', type: 'button', 'aria-label': 'Quitar este insumo', onclick: () => fila.remove() }, '✕'));
+        fila.leer = () => ({ insumo_id: s.value, cantidad: c.value, precio_unitario: pu.value });
+        fila.importe = () => (Number(c.value) > 0 && pu.value !== '' ? Number(c.value) * Number(pu.value) : 0);
+        if (insumoId) act();
         lineas.append(fila); return fila;
       }
       const filas = () => [...lineas.children];
+      const totalTxt = e('p', { class: 'total-cot', 'data-cotizacion': '1', role: 'status' }, '');
+      function total() { const t = filas().reduce((a, f) => a + (f.importe ? f.importe() : 0), 0); totalTxt.textContent = t > 0 ? `Cotización estimada: ${mx(t)}` + (esAdmin ? ' · se registrará como gasto de hoy al enviar.' : ' · se registra como gasto cuando administración la apruebe.') : ''; }
       pv.onchange = () => {
         const p = provActual();
-        aviso.textContent = p ? `Se enviará un correo a ${p.nombre} (${p.correo}). Si responde, su respuesta llegará a ${usuario.correo}. Las cantidades se suman al stock automáticamente al enviar.` : '';
+        aviso.textContent = !p ? '' : esAdmin ? `Se enviará un correo a ${p.nombre} (${p.correo}). Si responde, su respuesta llegará a ${usuario.correo}. Las cantidades se suman al stock automáticamente al enviar.` : `Tu solicitud a ${p.nombre} llegará a administración. Solo cuando la apruebe se hará la compra.`;
         const previas = filas().map((f) => f.leer()); lineas.replaceChildren();
         const permitidos = new Set(opcionesInsumo().map((i) => String(i.id)));
-        previas.filter((x) => x.insumo_id && permitidos.has(x.insumo_id)).forEach((x) => linea(x.insumo_id, x.cantidad));
+        previas.filter((x) => x.insumo_id && permitidos.has(x.insumo_id)).forEach((x) => { const f = linea(x.insumo_id, x.cantidad); });
         if (!filas().length) linea();
       };
       linea();
@@ -101,21 +122,26 @@
         filas().filter((f) => !f.leer().insumo_id && !f.leer().cantidad).forEach((f) => f.remove());
         sugerencias.filter((x) => !ya.has(String(x.id))).forEach((x) => linea(x.id, x.sugerido));
       });
-      const b = e('button', { class: 'btn', type: 'submit' }, 'Enviar pedido al proveedor');
+      const b = e('button', { class: 'btn', type: 'submit' }, esAdmin ? 'Enviar pedido al proveedor' : 'Enviar solicitud a administración');
       const f = e('form', { onsubmit: enviar(b, err, async () => {
         if (!pv.value) throw new Error('Elige un proveedor.');
         const items = filas().map((x) => x.leer()).filter((x) => x.insumo_id || x.cantidad);
         if (!items.length) throw new Error('Agrega al menos un insumo con su cantidad.');
         if (items.some((x) => !x.insumo_id || !(Number(x.cantidad) > 0))) throw new Error('Cada renglón necesita un insumo y una cantidad mayor a 0.');
+        if (items.some((x) => x.precio_unitario === '' || !(Number(x.precio_unitario) >= 0))) throw new Error('Cada renglón necesita un precio unitario (0 o más).');
         if (new Set(items.map((x) => x.insumo_id)).size !== items.length) throw new Error('Un insumo está repetido: súmalo en un solo renglón.');
         const r = await api('/pedidos-proveedor', { method: 'POST', body: { proveedor_id: pv.value, items, nota: nota.value || undefined, suma_stock_en: 'envio' } });
-        const p = r.pedido; panel.replaceChildren(e('div', { class: 'card narrow' }, e('h3', {}, `Pedido ${p.folio} enviado`),
-          ok(`Se mandó un correo a ${p.proveedor} (${p.proveedor_correo}) con ${p.items.length} insumo(s).`),
+        const p = r.pedido;
+        if (p.estado === 'solicitado') { panel.replaceChildren(e('div', { class: 'card narrow' }, e('h3', {}, `Solicitud ${p.folio} enviada`),
+          ok(`Tu solicitud por ${mx(p.total)} quedó pendiente de aprobación. No se ha hecho ninguna compra todavía.`),
+          e('div', { class: 'row' }, e('button', { class: 'btn', type: 'button', onclick: () => ir('pedidos') }, 'Ver mis solicitudes'), e('button', { class: 'btn s', type: 'button', onclick: () => ir('nuevo') }, 'Hacer otra')))); return; }
+        panel.replaceChildren(e('div', { class: 'card narrow' }, e('h3', {}, `Pedido ${p.folio} enviado`),
+          ok(`Se mandó un correo a ${p.proveedor} (${p.proveedor_correo}) con ${p.items.length} insumo(s). Total cotizado: ${mx(p.total)}, registrado como gasto de hoy.`),
           e('p', {}, 'El stock ya se sumó al inventario.'),
           e('div', { class: 'row' }, e('button', { class: 'btn', type: 'button', onclick: () => ir('pedidos') }, 'Ver pedidos'), e('button', { class: 'btn s', type: 'button', onclick: () => ir('nuevo') }, 'Hacer otro pedido'))));
       }) }, campo('Proveedor', pv), aviso, e('h3', {}, 'Qué necesitas'), lineas,
         e('div', { class: 'row' }, e('button', { class: 'btn s', type: 'button', onclick: () => linea() }, '+ Agregar insumo'), sug),
-        campo('Nota para el proveedor (opcional)', nota),
+        campo('Nota para el proveedor (opcional)', nota), totalTxt,
         err, b);
       panel.append(e('div', { class: 'card' }, f));
     }

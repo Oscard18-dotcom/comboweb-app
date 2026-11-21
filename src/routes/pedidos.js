@@ -12,6 +12,13 @@ const limCheckout = lim(30, 'Demasiados intentos de pago. Intenta de nuevo en un
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Horarios libres de una fecha (HU03)
+// Sin aceptar el Aviso de privacidad no se puede comprar (los datos de entrega son personales)
+const priv = require('../services/privacidad');
+function exigirPrivacidad(req, res, next) {
+  if (priv.pendiente(req.user)) return res.status(403).json({ error: 'Antes de comprar debes aceptar el Aviso de privacidad.', codigo: 'privacidad' });
+  next();
+}
+
 router.get('/disponibilidad', limCotizar, wrap(async (req, res) => {
   if (!svc.fechaValida(req.query.fecha)) return res.status(400).json({ error: 'Elige una fecha válida (AAAA-MM-DD).' });
   res.json({ fecha: req.query.fecha, horarios: await svc.horarios(db, req.query.fecha) });
@@ -24,7 +31,7 @@ router.post('/cotizar', limCotizar, wrap(async (req, res) => {
 }));
 
 // Paso 12: valida, guarda el combo y entrega el enlace de la pasarela (HU04)
-router.post('/checkout', auth, roles('cliente'), limCheckout, wrap(async (req, res) => {
+router.post('/checkout', auth, roles('cliente'), exigirPrivacidad, limCheckout, wrap(async (req, res) => {
   const r = await svc.crearCheckout(req.user, req.body, pagos.obtener());
   if (r.errores) return res.status(422).json({ error: r.errores[0].mensaje, errores: r.errores });
   res.status(201).json(r);

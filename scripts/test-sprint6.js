@@ -42,11 +42,13 @@ function rutas() {
 const PUBLICAS = new Set(['GET /api/catalogo', 'GET /api/catalogo/codigo-postal/:cp', 'GET /api/pedidos/disponibilidad', 'POST /api/pedidos/cotizar', 'POST /api/auth/login', 'POST /api/auth/register', 'POST /api/auth/olvide', 'POST /api/auth/restablecer', 'GET /api/salud', 'POST /api/pagos/webhook/stripe']);
 function clasifica(m, p) {
   if (PUBLICAS.has(`${m} ${p}`)) return { tipo: 'publica' };
-  if (['/api/admin', '/api/recetas', '/api/reportes', '/api/notificaciones', '/api/proveedores', '/api/pedidos-proveedor'].some((x) => p.startsWith(x))) return { tipo: 'roles', roles: ['admin'] };
+  if (['/api/admin', '/api/recetas', '/api/reportes', '/api/notificaciones', '/api/proveedores'].some((x) => p.startsWith(x))) return { tipo: 'roles', roles: ['admin'] };
+  // Almacén puede ver y SOLICITAR; aprobar, rechazar, recibir y cancelar son solo del administrador
+  if (p.startsWith('/api/pedidos-proveedor')) return { tipo: 'roles', roles: /\/(aprobar|rechazar|recibir|cancelar)$/.test(p) ? ['admin'] : ['almacen', 'admin'] };
   if (p.startsWith('/api/inventario')) return { tipo: 'roles', roles: ['almacen', 'admin'] };
   if (p.startsWith('/api/cocina')) return { tipo: 'roles', roles: ['cocina', 'admin'] };
   if (p === '/api/pedidos/checkout' || p.startsWith('/api/pedidos/checkout/') || (m === 'GET' && p === '/api/pedidos') || p.startsWith('/api/pagos/simulado') || p.startsWith('/api/avisos')) return { tipo: 'roles', roles: ['cliente'] };
-  if (['/api/pedidos/:id', '/api/auth/me', '/api/auth/cambiar-password'].includes(p)) return { tipo: 'sesion' };
+  if (['/api/pedidos/:id', '/api/auth/me', '/api/auth/cambiar-password', '/api/auth/aceptar-privacidad'].includes(p)) return { tipo: 'sesion' };
   return null;
 }
 const concreta = (p) => p.replace('/checkout/:id', '/checkout/00000000-0000-4000-8000-000000000000').replace('/simulado/:id', '/simulado/00000000-0000-4000-8000-000000000000').replace(/:id/g, '999999');
@@ -59,7 +61,7 @@ const concreta = (p) => p.replace('/checkout/:id', '/checkout/00000000-0000-4000
   try {
     const login = async (c, pw = process.env.SEED_PASSWORD) => call('POST', '/api/auth/login', { correo: c, password: pw });
     const admin = (await login('admin@encombo.test')).j.token, almacen = (await login('almacen@encombo.test')).j.token, cocina = (await login('cocina@encombo.test')).j.token;
-    const reg = async (tag, nombre = 'Cliente S6') => { const r = await call('POST', '/api/auth/register', { nombre, correo: `${tag}${R}@prueba.test`, password: 'secreta123' }); clientes.push(r.j.usuario.id); return { token: r.j.token, id: r.j.usuario.id, correo: `${tag}${R}@prueba.test` }; };
+    const reg = async (tag, nombre = 'Cliente S6') => { const r = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre, correo: `${tag}${R}@prueba.test`, password: 'secreta123' }); clientes.push(r.j.usuario.id); return { token: r.j.token, id: r.j.usuario.id, correo: `${tag}${R}@prueba.test` }; };
     const C = await reg('c6'), Otro = await reg('o6');
     const dia = (k) => svc.addDays(svc.todayMX(), 10 + (R % 40) + k);
 
@@ -115,9 +117,9 @@ const concreta = (p) => p.replace('/checkout/:id', '/checkout/00000000-0000-4000
     t('el sitio público sí se sirve (index y scripts)', (await crudo('/')).s === 200 && (await crudo('/app.js')).s === 200);
     r = await call('POST', '/api/auth/login', 'x'.repeat(150000)); t('cuerpo de más de 100 KB → 413', r.s === 413);
     r = await call('POST', '/api/auth/login', '{json roto'); t('JSON roto → 400 sin detalles internos', r.s === 400 && !/at |Error:/.test(r.texto));
-    r = await call('POST', '/api/auth/register', { nombre: { $ne: 1 }, correo: ['a@b.co'], password: { x: 1 } }); t('tipos inesperados (objetos/arreglos) → 400, no 500', r.s === 400);
+    r = await call('POST', '/api/auth/register', { acepta_privacidad: true, nombre: { $ne: 1 }, correo: ['a@b.co'], password: { x: 1 } }); t('tipos inesperados (objetos/arreglos) → 400, no 500', r.s === 400);
     r = await call('POST', '/api/auth/login', { correo: { $gt: '' }, password: { $gt: '' } }); t('inyección tipo NoSQL en el login → 401', r.s === 401);
-    const dup = await Promise.all([1, 2, 3].map(() => call('POST', '/api/auth/register', { nombre: 'Carrera', correo: `carrera${R}@prueba.test`, password: 'secreta123' })));
+    const dup = await Promise.all([1, 2, 3].map(() => call('POST', '/api/auth/register', { acepta_privacidad: true, nombre: 'Carrera', correo: `carrera${R}@prueba.test`, password: 'secreta123' })));
     const idsC = await q('SELECT id FROM usuarios WHERE correo=$1', [`carrera${R}@prueba.test`]); idsC.forEach((x) => clientes.push(x.id));
     t('3 registros simultáneos del mismo correo: uno se crea y dos se rechazan', dup.filter((x) => x.s === 201).length === 1 && dup.filter((x) => x.s === 409).length === 2 && idsC.length === 1);
 

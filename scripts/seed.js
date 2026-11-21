@@ -5,7 +5,7 @@ const { pool } = require('../src/db');
 const INSUMOS = [ // nombre, unidad, stock, mínimo, costo unitario
   ['Harina', 'g', 5000, 1500, 0.022], ['Azúcar', 'g', 3000, 1000, 0.026], ['Mantequilla', 'g', 2000, 600, 0.14],
   ['Cacao', 'g', 800, 300, 0.35], ['Café molido', 'g', 1500, 400, 0.26], ['Leche', 'ml', 4000, 1500, 0.02],
-  ['Té chai', 'g', 300, 100, 0.5], ['Caja chica', 'pza', 30, 10, 8], ['Caja mediana', 'pza', 30, 10, 12], ['Caja grande', 'pza', 20, 8, 18],
+  ['Té chai', 'g', 300, 100, 0.5], ['Caja', 'pza', 60, 20, 12],
 ];
 const PRODUCTOS = [ // nombre, descripción, precio, receta { insumo: cantidad }
   ['Cupcake', 'Cupcake de vainilla', 25, { Harina: 40, 'Azúcar': 30, Mantequilla: 20 }],
@@ -15,7 +15,6 @@ const PRODUCTOS = [ // nombre, descripción, precio, receta { insumo: cantidad }
   ['Café americano', 'Café negro', 30, { 'Café molido': 18 }],
   ['Té chai', 'Té chai con leche', 32, { 'Té chai': 5, Leche: 100 }],
 ];
-const PRESENTACIONES = [['Caja chica', 30], ['Caja mediana', 45], ['Caja grande', 65]]; // el insumo se llama igual
 const USUARIOS = [['Administración EN COMBO', 'admin@encombo.test', 'admin'], ['Cocina EN COMBO', 'cocina@encombo.test', 'cocina'], ['Almacén EN COMBO', 'almacen@encombo.test', 'almacen'], ['Cliente de práctica', 'cliente@encombo.test', 'cliente']];
 
 (async () => {
@@ -39,18 +38,16 @@ const USUARIOS = [['Administración EN COMBO', 'admin@encombo.test', 'admin'], [
       for (const [i, q] of Object.entries(rec))
         await c.query('INSERT INTO receta_ingredientes(receta_id,insumo_id,cantidad) VALUES($1,$2,$3)', [rid, ids[i], q]);
     }
-    for (const [n, p] of PRESENTACIONES)
-      await c.query('INSERT INTO presentaciones(nombre,precio,insumo_id) VALUES($1,$2,$3) ON CONFLICT (nombre) DO NOTHING', [n, p, ids[n]]);
 
     if (produccion) console.log('NODE_ENV=production: NO se crearon usuarios de prueba. Crea tu administrador con:  npm run crear-admin');
     else {
       const hash = await bcrypt.hash(pass, 12);
       for (const [n, correo, rol] of USUARIOS)
-        await c.query('INSERT INTO usuarios(nombre,correo,password_hash,rol) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING', [n, correo, hash, rol]);
+        await c.query('INSERT INTO usuarios(nombre,correo,password_hash,rol,privacidad_version,privacidad_aceptada_en) VALUES($1,$2,$3,$4,$5,now()) ON CONFLICT DO NOTHING', [n, correo, hash, rol, require('../src/services/privacidad').VERSION]);
     }
     await require('../src/services/combos').sembrar(c);
     await c.query('COMMIT');
-    console.log('Datos iniciales cargados (insumos, productos con receta y presentaciones de ejemplo).' + (produccion ? '' : ' Cuentas de prueba: admin@, cocina@, almacen@ y cliente@encombo.test'));
+    console.log('Datos iniciales cargados (insumos, productos con receta y combos de ejemplo).' + (produccion ? '' : ' Cuentas de prueba: admin@, cocina@, almacen@ y cliente@encombo.test'));
   } catch (e) {
     await c.query('ROLLBACK');
     console.error('Error al cargar datos:', e.message);

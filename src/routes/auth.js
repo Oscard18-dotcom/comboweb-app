@@ -24,21 +24,23 @@ const limiterOlvide = rateLimit({
   message: { error: 'Demasiados intentos. Intenta de nuevo en unos minutos.' },
 });
 const sign = (u) => jwt.sign({ id: u.id, v: u.token_version || 0 }, process.env.JWT_SECRET, { expiresIn: '8h' });
-const pub = (u) => ({ id: u.id, nombre: u.nombre, correo: u.correo, rol: u.rol });
+const priv = require('../services/privacidad');
+const pub = (u) => ({ id: u.id, nombre: u.nombre, correo: u.correo, rol: u.rol, privacidad_pendiente: priv.pendiente(u) });
 // Hash de relleno: evita que el tiempo de respuesta revele si el correo existe
 const DUMMY_HASH = bcrypt.hashSync('relleno-no-es-una-contraseña', 12);
 
 // Registro público: SIEMPRE crea clientes. El personal lo da de alta el administrador.
 router.post('/register', limiter, wrap(async (req, res) => {
-  const { nombre, correo, telefono, password } = req.body || {};
+  const { nombre, correo, telefono, password, acepta_privacidad } = req.body || {};
+  if (acepta_privacidad !== true) return res.status(400).json({ error: 'Para crear tu cuenta debes aceptar el Aviso de privacidad.' });
   if (!isText(nombre, 2, 80)) return res.status(400).json({ error: 'Escribe tu nombre completo.' });
   if (!isEmail(correo)) return res.status(400).json({ error: 'Escribe un correo válido.' });
   if (!isPassword(password)) return res.status(400).json({ error: 'La contraseña debe tener entre 8 y 72 caracteres.' });
   const hash = await bcrypt.hash(password, 12);
   try {
     const { rows } = await db.query(
-      "INSERT INTO usuarios(nombre,correo,telefono,password_hash,rol) VALUES($1,$2,$3,$4,'cliente') RETURNING id,nombre,correo,rol,token_version",
-      [nombre.trim(), correo.trim().toLowerCase(), telefono ? String(telefono).slice(0, 20) : null, hash]);
+      "INSERT INTO usuarios(nombre,correo,telefono,password_hash,rol,privacidad_version,privacidad_aceptada_en) VALUES($1,$2,$3,$4,'cliente',$5,now()) RETURNING id,nombre,correo,rol,token_version,privacidad_version",
+      [nombre.trim(), correo.trim().toLowerCase(), telefono ? String(telefono).slice(0, 20) : null, hash, priv.VERSION]);
     res.status(201).json({ token: sign(rows[0]), usuario: pub(rows[0]) });
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'Ya existe una cuenta con este correo. Inicia sesión.' });
@@ -49,7 +51,7 @@ router.post('/register', limiter, wrap(async (req, res) => {
 router.post('/login', limiter, wrap(async (req, res) => {
   const { correo, password } = req.body || {};
   const { rows } = await db.query(
-    'SELECT id,nombre,correo,rol,activo,password_hash,token_version FROM usuarios WHERE lower(correo)=lower($1)', [String(correo || '')]);
+    'SELECT id,nombre,correo,rol,activo,password_hash,token_version,privacidad_version FROM usuarios WHERE lower(correo)=lower($1)', [String(correo || '')]);
   const u = rows[0];
   const ok = await bcrypt.compare(String(password || ''), u ? u.password_hash : DUMMY_HASH);
   if (!u || !ok || !u.activo) return res.status(401).json({ error: 'Correo o contraseña incorrectos.' });
@@ -119,6 +121,12 @@ router.post('/restablecer', limiter, wrap(async (req, res) => {
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
 }));
 
+// Quien ya tenía cuenta (o el aviso cambió) lo acepta aquí; queda guardada la versión y la fecha
+router.post('/aceptar-privacidad', auth, wrap(async (req, res) => {
+  if ((req.body || {}).acepto !== true) return res.status(400).json({ error: 'Debes aceptar el Aviso de privacidad para continuar.' });
+  const { rows } = await db.query('UPDATE usuarios SET privacidad_version=$2, privacidad_aceptada_en=now() WHERE id=$1 RETURNING id,nombre,correo,rol,privacidad_version', [req.user.id, priv.VERSION]);
+  res.json({ usuario: pub(rows[0]) });
+}));
 router.get('/me', auth, (req, res) => res.json({ usuario: pub(req.user) }));
 
 module.exports = router;
