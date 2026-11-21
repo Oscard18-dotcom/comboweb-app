@@ -203,7 +203,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     const menuP = w.document.querySelector('#staff [data-periodo]'); const cambiarP = (v) => { menuP.value = v; menuP.dispatchEvent(new w.Event('change', { bubbles: true })); };
     t('dashboard: los calendarios de fechas están ocultos hasta elegir "Elegir fechas…"', w.document.querySelector('#staff [data-fechas]').hidden === true);
     cambiarP('total');
-    t('al elegir Histórico total se consulta ese periodo y el panel muestra cifras', await until(() => w.__urls.some((x) => /ventas-periodo\?periodo=total/.test(x)) && !!w.document.querySelector('#staff [data-ventas-periodo]') && /Ticket promedio/.test($('#staff').textContent)));
+    t('al elegir Histórico total se consulta ese periodo y el panel muestra cifras', await until(() => w.__urls.some((x) => /ventas-periodo\?periodo=total/.test(x)) && !!w.document.querySelector('#staff [data-ventas-periodo]') && !/Ticket promedio|Utilidad bruta|Margen/.test($('#staff [data-ventas-periodo]').textContent) && !!w.document.querySelector('#staff svg.grafica') && !!w.document.querySelector('#staff [data-ganancia-total]')));
     cambiarP('ultimos30');
         t('Últimos 30 días muestra un rango de 30 días hasta hoy', await until(async () => { const m = /Del (\d\d)\/(\d\d)\/(\d{4}) al (\d\d)\/(\d\d)\/(\d{4})/.exec($('#staff').textContent); return !!m && Math.round((Date.UTC(+m[6], +m[5] - 1, +m[4]) - Date.UTC(+m[3], +m[2] - 1, +m[1])) / 864e5) === 29; }));
     cambiarP('rango');
@@ -424,6 +424,9 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     t('usuarios: no se puede dar de baja al único administrador', await until(() => /sin un administrador activo/.test($('#staff').textContent)));
     const chkCli = w.document.querySelector('#staff .chk input'); chkCli.checked = true; chkCli.dispatchEvent(new w.Event('change'));
     t('usuarios: "ver también clientes" los muestra', /ui\d+@prueba\.test/.test($('#staff').textContent));
+    t('usuarios: solo cocina y almacén tienen botón Eliminar (admin y clientes no)', [...w.document.querySelectorAll('#staff tbody tr')].every((tr) => { const rol = tr.querySelector('select').value; return /Eliminar/.test(tr.textContent) === (rol === 'cocina' || rol === 'almacen'); }));
+    botonF(`ui6staff${R}`, 'Eliminar').click(); [...w.document.querySelectorAll('#staff button')].find((b) => b.textContent === 'Sí, eliminar cuenta').click();
+    t('usuarios: eliminar una cuenta de almacén la borra de la base', await until(async () => (await db.query('SELECT 1 FROM usuarios WHERE correo=$1', [`ui6staff${R}@prueba.test`])).rows.length === 0));
 
     /* ---------- MI CUENTA (cambio de contraseña) ---------- */
     const rc = await (await fetch(B + '/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acepta_privacidad: true, nombre: 'Cuenta UI6', correo: `ui6cta${R}@prueba.test`, password: 'secreta123' }) })).json();

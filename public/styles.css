@@ -162,3 +162,13 @@ main .mu,main small,main h3,main dt{color:var(--tx2)}
 .tarjeta-g{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #E9DFC9}
 .btn.peligro{background:#B3261E}.btn.peligro-s{color:#B3261E;border-color:#B3261E}
 #cuenta a{color:#3F210E;font-weight:600}
+
+.mini.peligro-s{color:#B3261E;border-color:#B3261E}
+.grafica{width:100%;height:auto;max-width:620px;display:block}
+.grafica.pastel{max-width:200px}
+.pastel-w{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+.leyenda{list-style:none;margin:0;padding:0;color:#3F210E;font-size:.9rem}
+.leyenda li{margin:4px 0;display:flex;align-items:center;gap:8px}
+.leyenda .sw{display:inline-block;width:14px;height:14px;border-radius:3px;flex:none}
+.graficas h4{margin:6px 0;color:#3F210E}
+.graficas{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:12px}

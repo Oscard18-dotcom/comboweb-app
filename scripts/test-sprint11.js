@@ -222,6 +222,21 @@ const q = async (sql, p) => (await db.query(sql, p)).rows;
     t('…y ya no puede iniciar sesión con su correo anterior', (await call('POST', '/api/auth/login', { correo: `nuevo${R}@prueba.test`, password: 'secreta123' })).s === 401);
     const aviso2 = await (await fetch(B + '/privacidad.html')).text();
     t('el aviso (punto 6) remite a "Mi cuenta" y ya no menciona el teléfono del cliente', /Mi cuenta/.test(aviso2) && !/teléfono/i.test(aviso2));
+
+    // ---------- 7) El admin solo puede eliminar cuentas de cocina y almacén ----------
+    {
+      const hash = (await q("SELECT password_hash h FROM usuarios WHERE correo='cocina@encombo.test'"))[0].h;
+      const mk = async (rol, n) => (await q('INSERT INTO usuarios(nombre,correo,password_hash,rol) VALUES($1,$2,$3,$4) RETURNING id', ['Prueba ' + n, `del-${n}-${R}@prueba.test`, hash, rol]))[0].id;
+      const idCo = await mk('cocina', 'co'), idAl = await mk('almacen', 'al'), idAd = await mk('admin', 'ad'), idCl = await mk('cliente', 'cl');
+      await db.query("INSERT INTO movimientos_inventario(insumo_id,tipo,cantidad,usuario_id) SELECT id,'ajuste',0,$1 FROM insumos LIMIT 1", [idAl]).catch(() => {});
+      t('eliminar: cocina y almacén no pueden usar el endpoint', (await call('DELETE', `/api/admin/usuarios/${idCo}`, undefined, cocina)).s === 403 && (await call('DELETE', `/api/admin/usuarios/${idCo}`, undefined, almacen)).s === 403);
+      t('eliminar: no se puede eliminar a otro administrador', (await call('DELETE', `/api/admin/usuarios/${idAd}`, undefined, admin)).s === 403 && (await q('SELECT 1 FROM usuarios WHERE id=$1', [idAd])).length === 1);
+      t('eliminar: no se puede eliminar a un cliente', (await call('DELETE', `/api/admin/usuarios/${idCl}`, undefined, admin)).s === 403 && (await q('SELECT 1 FROM usuarios WHERE id=$1', [idCl])).length === 1);
+      t('eliminar: id inexistente → 404', (await call('DELETE', '/api/admin/usuarios/999999999', undefined, admin)).s === 404);
+      t('eliminar: cuenta de cocina → 200 y se borra', (await call('DELETE', `/api/admin/usuarios/${idCo}`, undefined, admin)).s === 200 && (await q('SELECT 1 FROM usuarios WHERE id=$1', [idCo])).length === 0);
+      t('eliminar: cuenta de almacén con historial → 200, el historial se conserva sin su nombre', (await call('DELETE', `/api/admin/usuarios/${idAl}`, undefined, admin)).s === 200 && (await q('SELECT 1 FROM usuarios WHERE id=$1', [idAl])).length === 0);
+      await db.query('DELETE FROM usuarios WHERE id = ANY($1)', [[idAd, idCl]]);
+    }
   } catch (e) { fail++; console.log('FAIL excepción', e.stack || e); }
   finally {
     try {

@@ -12,6 +12,52 @@
     const kp = (t, v, color) => e('div', { class: 'card' }, e('small', { class: 'mu' }, t), e('b', { style: color ? 'color:' + color : '' }, v));
     const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
     const etq = (p, u) => { const [f, h] = p.split(' '), [y, m, d] = f.split('-'); return u === 'hour' ? h : u === 'day' ? `${d}/${m}` : u === 'week' ? `Semana del ${d}/${m}` : u === 'month' ? `${MES[Number(m) - 1]} ${y}` : y; };
+    /* ---- Gráficas en SVG (sin librerías; colores de la paleta) ---- */
+    const NS = 'http://www.w3.org/2000/svg';
+    const sv = (tag, at = {}, ...hijos) => { const n = document.createElementNS(NS, tag); for (const [k, val] of Object.entries(at)) n.setAttribute(k, String(val)); hijos.forEach((h) => n.append(h)); return n; };
+    const txt = (at, t) => { const n = sv('text', at); n.textContent = t; return n; };
+    const COL = ['#3F210E', '#6A6141', '#917A79', '#3E5B3A', '#8A4B2A', '#7D756B'];
+    function graficaBarras(serie, unidad) {
+      if (!serie.length) return e('p', { class: 'mu' }, 'Sin datos para graficar.');
+      const W = 560, Hh = 230, L = 52, B = 34, T = 14, R = 8, max = Math.max(1, ...serie.map((x) => x.ventas));
+      const ancho = (W - L - R) / serie.length, bw = Math.max(4, Math.min(46, ancho * 0.62)), alto = Hh - B - T;
+      const salto = Math.ceil(serie.length / 8);
+      const g = sv('svg', { viewBox: `0 0 ${W} ${Hh}`, role: 'img', 'aria-label': 'Gráfica de barras de ventas por periodo', class: 'grafica' }, sv('title', {}));
+      g.firstChild.textContent = 'Ventas por periodo (MXN)';
+      [0, 0.5, 1].forEach((f) => {
+        const y = T + alto - alto * f;
+        g.append(sv('line', { x1: L, x2: W - R, y1: y, y2: y, stroke: '#E3D5C0', 'stroke-width': 1 }), txt({ x: L - 6, y: y + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#3F210E' }, mx(max * f).replace(/\.00$/, '')));
+      });
+      serie.forEach((x, i) => {
+        const h = x.ventas / max * alto, cx = L + ancho * i + ancho / 2;
+        const r = sv('rect', { x: cx - bw / 2, y: T + alto - h, width: bw, height: Math.max(h, x.ventas > 0 ? 2 : 0), rx: 3, fill: '#3F210E' }, sv('title', {}));
+        r.firstChild.textContent = `${etq(x.periodo, unidad)}: ${mx(x.ventas)} · ${x.pedidos} pedido(s)`;
+        g.append(r);
+        if (i % salto === 0) g.append(txt({ x: cx, y: Hh - 12, 'text-anchor': 'middle', 'font-size': 11, fill: '#3F210E' }, unidad === 'week' ? etq(x.periodo, 'day') : etq(x.periodo, unidad)));
+      });
+      return g;
+    }
+    function graficaPastel(items) {
+      const datos = items.filter((x) => x.ventas > 0).sort((a, b) => b.ventas - a.ventas);
+      if (!datos.length) return e('p', { class: 'mu' }, 'Sin ventas para graficar.');
+      const top = datos.slice(0, 5), resto = datos.slice(5).reduce((a, x) => a + x.ventas, 0);
+      if (resto > 0) top.push({ nombre: 'Otros', ventas: resto });
+      const tot = top.reduce((a, x) => a + x.ventas, 0), R0 = 80, c = 90;
+      const g = sv('svg', { viewBox: '0 0 180 180', role: 'img', 'aria-label': 'Gráfica de pastel de ventas por combo', class: 'grafica pastel' });
+      let ang = -Math.PI / 2;
+      top.forEach((x, i) => {
+        const frac = x.ventas / tot, fin = ang + frac * 2 * Math.PI, col = COL[i % COL.length];
+        const t = sv('title', {}); t.textContent = `${x.nombre}: ${mx(x.ventas)} (${Math.round(frac * 1000) / 10} %)`;
+        if (top.length === 1) g.append(sv('circle', { cx: c, cy: c, r: R0, fill: col }, t));
+        else {
+          const x1 = c + R0 * Math.cos(ang), y1 = c + R0 * Math.sin(ang), x2 = c + R0 * Math.cos(fin), y2 = c + R0 * Math.sin(fin);
+          g.append(sv('path', { d: `M${c},${c} L${x1},${y1} A${R0},${R0} 0 ${frac > 0.5 ? 1 : 0} 1 ${x2},${y2} Z`, fill: col, stroke: '#FFFDF9', 'stroke-width': 2 }, t));
+        }
+        ang = fin;
+      });
+      const leyenda = e('ul', { class: 'leyenda' }, ...top.map((x, i) => e('li', {}, e('span', { class: 'sw', style: `background:${COL[i % COL.length]}` }), `${x.nombre}: ${mx(x.ventas)} (${Math.round(x.ventas / tot * 1000) / 10} %)`)));
+      return e('div', { class: 'pastel-w' }, g, leyenda);
+    }
     const sel = H.menuPeriodo({ inicial: 'hoy', etiqueta: 'Periodo de ventas' }, () => cargarVentas());
     const contenido = e('div');
     const panelV = e('section', { class: 'card tw' }, e('h3', {}, 'Ventas por periodo'), sel.el, contenido);
@@ -25,7 +71,8 @@
         const max = Math.max(1, ...v.serie.map((x) => x.ventas));
         contenido.replaceChildren(
           e('p', { class: 'mu' }, `Del ${fd(v.desde)} al ${fd(v.hasta)} · cifras en pesos mexicanos (MXN)`),
-          e('div', { class: 'kp', 'data-ventas-periodo': '1' }, kp('Ventas', mx(v.ventas)), kp('Pedidos', String(v.pedidos)), kp('Ticket promedio', mx(v.ticket_promedio)), kp('Utilidad bruta', mx(v.utilidad)), kp('Margen', v.margen_pct + ' %'), kp('Gastos de compras', mx(v.gastos), v.gastos ? '#B3261E' : '')),
+          e('div', { class: 'kp', 'data-ventas-periodo': '1' }, kp('Ventas', mx(v.ventas)), kp('Pedidos', String(v.pedidos)), kp('Gastos de compras', mx(v.gastos), v.gastos ? '#B3261E' : '')),
+          e('div', { class: 'graficas' }, e('div', {}, e('h4', {}, 'Ventas por periodo (barras)'), graficaBarras(v.serie, v.unidad)), e('div', {}, e('h4', {}, 'Ventas por combo (pastel)'), graficaPastel(v.combos))),
           v.gastos_detalle && v.gastos_detalle.length ? e('p', { class: 'mu', 'data-gastos': '1' }, 'Compras a proveedores: ' + v.gastos_detalle.map((g) => `${g.folio} ${g.proveedor} ${mx(g.total)}`).join(' · ')) : null,
           v.serie.length ? e('table', { class: 'contable' }, e('thead', {}, e('tr', {}, e('th', {}, v.unidad === 'hour' ? 'Hora' : 'Periodo'), e('th', { class: 'n' }, 'Pedidos'), e('th', { class: 'n' }, 'Ventas'), e('th', {}, ''))),
             e('tbody', {}, ...v.serie.map((x) => e('tr', {}, e('td', {}, etq(x.periodo, v.unidad)), e('td', { class: 'n' }, String(x.pedidos)), mon(e, x.ventas),
@@ -49,6 +96,12 @@
       raiz.replaceChildren(
         e('div', { class: 'kp' }, kp('Ventas de hoy', mx(d.ventas_hoy)), kp('Pedidos de hoy', String(d.pedidos_hoy)), kp('Entregas pendientes hoy', String(d.entregas_pendientes_hoy), d.entregas_pendientes_hoy ? '#6A6141' : ''),
           kp('Insumos en reorden', String(d.insumos_en_reorden), d.insumos_en_reorden ? '#B3261E' : ''), kp('Pedidos a proveedor por recibir', String(d.pedidos_proveedor_por_recibir || 0)), kp('Gastos de hoy (compras)', mx(d.gastos_hoy || 0), d.gastos_hoy ? '#B3261E' : ''), kp('Solicitudes por aprobar', String(d.solicitudes_pendientes || 0), d.solicitudes_pendientes ? '#6A6141' : '')),
+        (() => {
+          const vt = Number(d.ventas_hoy || 0), cp = Number(d.gastos_hoy || 0), gan = Math.round((vt - cp) * 100) / 100;
+          return e('section', { class: 'card ganancia', 'data-ganancias': '1' }, e('h3', {}, 'Ganancias del día'),
+            e('div', { class: 'kp' }, kp('Ventas de hoy', mx(vt)), kp('Compras a proveedores de hoy', mx(cp), cp ? '#B3261E' : ''),
+              e('div', { class: 'card' }, e('small', { class: 'mu' }, 'Ganancia total del día (ventas − compras)'), e('b', { 'data-ganancia-total': '1', style: 'color:' + (gan < 0 ? '#B3261E' : '#3E5B3A') }, mx(gan)))));
+        })(),
         panelV,
         e('div', { class: 'card' }, e('h3', {}, 'Pedidos por estatus'), e('div', { class: 'row', style: 'margin:0' }, ...Object.entries(d.por_estatus).map(([k, v]) => e('span', {}, chipC(k, ST[k]), ` ${v}`)))),
         d.pagos_en_revision ? e('div', { class: 'alerta', role: 'alert' }, e('b', {}, `⚠ ${d.pagos_en_revision} pago(s) cobrado(s) sin pedido: requieren reembolso o atención manual desde el panel de la pasarela de pago.`),

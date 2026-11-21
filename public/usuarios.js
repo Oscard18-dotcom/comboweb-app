@@ -30,7 +30,8 @@
         e('tbody', {}, filas.map((u) => {
           const sel = e('select', { 'aria-label': `Rol de ${u.nombre}`, onchange: (ev) => cambiarRol(u, ev.target.value, ev.target) }, ...['cocina', 'almacen', 'admin', 'cliente'].map((r) => e('option', { value: r, selected: u.rol === r }, ROL[r])));
           return e('tr', {}, e('td', {}, u.nombre + (u.id === yo ? ' (tú)' : '')), e('td', {}, u.correo), e('td', {}, sel), e('td', {}, u.activo ? chipC('Activo', '#3E5B3A') : chipC('Inactivo', '#7D756B')),
-            e('td', { class: 'acc' }, e('button', { class: 'mini', type: 'button', onclick: () => confirmarEstado(u) }, u.activo ? 'Dar de baja' : 'Reactivar'), e('button', { class: 'mini', type: 'button', onclick: () => formClave(u) }, 'Restablecer contraseña')));
+            e('td', { class: 'acc' }, e('button', { class: 'mini', type: 'button', onclick: () => confirmarEstado(u) }, u.activo ? 'Dar de baja' : 'Reactivar'), e('button', { class: 'mini', type: 'button', onclick: () => formClave(u) }, 'Restablecer contraseña'),
+              ['cocina', 'almacen'].includes(u.rol) ? e('button', { class: 'mini peligro-s', type: 'button', 'aria-label': `Eliminar la cuenta de ${u.nombre}`, onclick: () => confirmarEliminar(u) }, 'Eliminar') : null));
         }))), filas.length ? null : e('p', { class: 'mu', style: 'padding:8px' }, 'No hay usuarios que coincidan.'));
     }
     async function cambiarRol(u, rol, sel) {
@@ -47,6 +48,15 @@
         catch (x) { er.replaceChildren(e('div', {}, x.message)); }
       } }, `Sí, ${accion}`);
       panel.replaceChildren(e('div', { class: 'card' }, e('h3', {}, `¿${accion[0].toUpperCase() + accion.slice(1)} a ${u.nombre}?`), e('p', {}, u.activo ? 'Ya no podrá iniciar sesión. Su historial se conserva.' : 'Podrá volver a iniciar sesión.'), er, e('div', { class: 'row' }, si, cerrar)));
+    }
+    function confirmarEliminar(u) {
+      const er = caja();
+      const si = e('button', { class: 'btn peligro', type: 'button', onclick: async () => {
+        er.replaceChildren(); si.disabled = true;
+        try { await api(`/admin/usuarios/${u.id}`, { method: 'DELETE' }); await cargar(); panel.replaceChildren(e('div', { class: 'card' }, ok(`La cuenta de ${u.nombre} se eliminó.`), cerrar)); }
+        catch (x) { er.replaceChildren(e('div', {}, x.message)); si.disabled = false; }
+      } }, 'Sí, eliminar cuenta');
+      panel.replaceChildren(e('div', { class: 'card' }, e('h3', {}, `¿Eliminar la cuenta de ${u.nombre}?`), e('p', {}, `Es una cuenta de ${ROL[u.rol]}. Se borra de forma definitiva y ya no podrá iniciar sesión. El historial de movimientos se conserva sin su nombre. Esta acción no se puede deshacer.`), er, e('div', { class: 'row' }, si, cerrar)));
     }
     function formClave(u) {
       const c = e('input', { type: 'text', value: generar(), autocomplete: 'off', 'aria-label': 'Contraseña temporal', required: true }), er = caja(), b = e('button', { class: 'btn', type: 'submit' }, 'Restablecer contraseña');

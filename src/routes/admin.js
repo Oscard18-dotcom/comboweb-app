@@ -200,4 +200,25 @@ router.patch('/usuarios/:id/password', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Eliminar una cuenta del personal. Solo cocina y almacén: nunca otro administrador ni un cliente.
+// Las bitácoras (inventario, estatus, compras) conservan su registro pero sin el nombre de la persona.
+router.delete('/usuarios/:id', wrap(async (req, res) => {
+  const id = paramId(req);
+  if (!id) return res.status(400).json({ error: 'Identificador inválido.' });
+  const t = (await db.query('SELECT id,nombre,rol FROM usuarios WHERE id=$1', [id])).rows[0];
+  if (!t) return res.status(404).json({ error: 'Usuario no encontrado.' });
+  if (!['cocina', 'almacen'].includes(t.rol)) return res.status(403).json({ error: 'Solo puedes eliminar cuentas de cocina o almacén. No se pueden eliminar administradores ni clientes.' });
+  const c = await db.pool.connect();
+  try {
+    await c.query('BEGIN');
+    await c.query('UPDATE movimientos_inventario SET usuario_id=NULL WHERE usuario_id=$1', [id]);
+    await c.query('UPDATE pedido_estatus_historial SET usuario_id=NULL WHERE usuario_id=$1', [id]);
+    await c.query('UPDATE pedidos_proveedor SET usuario_id=NULL WHERE usuario_id=$1', [id]);
+    await c.query('UPDATE pedidos_proveedor SET aprobado_por=NULL WHERE aprobado_por=$1', [id]);
+    await c.query('DELETE FROM usuarios WHERE id=$1', [id]);
+    await c.query('COMMIT');
+  } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
+  res.json({ eliminado: true });
+}));
+
 module.exports = router;
