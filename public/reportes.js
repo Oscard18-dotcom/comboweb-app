@@ -138,7 +138,24 @@
       raiz.replaceChildren(
         (() => {
           const vt = Number(d.ventas_hoy || 0), cp = Number(d.gastos_hoy || 0), gan = Math.round((vt - cp) * 100) / 100;
-          return e('section', { class: 'card ganancia', 'data-ganancias': '1' }, e('h3', {}, 'Ganancias del día'),
+          const imprimirGanancias = () => {
+            const fila = (a, b, cls) => e('div', { class: 'tk-fila' + (cls ? ' ' + cls : '') }, e('span', {}, a), e('span', {}, b));
+            const ahora = new Date();
+            let caja = document.getElementById('ticket-print');
+            if (!caja) { caja = document.createElement('div'); caja.id = 'ticket-print'; document.body.append(caja); }
+            caja.replaceChildren(e('div', { class: 'ticket' },
+              e('h2', {}, 'EN COMBO'), e('p', { class: 'tk-c' }, 'Comprobante de ganancias del día'),
+              fila('Fecha', ahora.toLocaleDateString('es-MX', { dateStyle: 'long' })), fila('Impreso', ahora.toLocaleTimeString('es-MX', { timeStyle: 'short' }) + ' h'), e('hr'),
+              fila('Pedidos del día', String(d.pedidos_hoy || 0)), fila('Ventas de hoy', mx(vt)),
+              fila('Compras a proveedores', mx(cp)), fila('Pedidos de compra', String(d.compras_hoy || 0)), e('hr'),
+              fila('GANANCIA TOTAL', mx(gan), 'tk-total'), e('p', { class: 'tk-c' }, 'Ganancia = ventas − compras a proveedores'),
+              e('p', { class: 'tk-c' }, 'Generado por: ' + (H.usuario && H.usuario.nombre ? H.usuario.nombre : 'Administrador'))));
+            document.body.classList.add('print-ticket');
+            const quitar = () => { document.body.classList.remove('print-ticket'); window.removeEventListener('afterprint', quitar); };
+            window.addEventListener('afterprint', quitar);
+            window.print();
+          };
+          return e('section', { class: 'card ganancia', 'data-ganancias': '1' }, e('div', { class: 'row', style: 'justify-content:space-between;align-items:center;gap:8px' }, e('h3', { style: 'margin:0' }, 'Ganancias del día'), e('button', { class: 'mini', type: 'button', 'data-imprimir-ganancias': '1', onclick: imprimirGanancias }, 'Imprimir comprobante')),
             e('div', { class: 'kp' }, kp('Ventas de hoy', mx(vt)), kp('Compras a proveedores de hoy', mx(cp), cp ? '#B3261E' : ''),
               e('div', { class: 'card' }, e('small', { class: 'mu' }, 'Ganancia total del día (ventas − compras)'), e('b', { 'data-ganancia-total': '1', style: 'color:' + (gan < 0 ? '#B3261E' : '#3E5B3A') }, mx(gan)))));
         })(),
