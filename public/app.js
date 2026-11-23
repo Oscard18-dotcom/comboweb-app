@@ -13,7 +13,7 @@ function el(tag, props = {}, ...kids) {
     else if (v === true) e.setAttribute(k, '');
     else if (v !== false && v != null) e.setAttribute(k, v);
   }
-  e.append(...kids.flat().filter((x) => x != null && x !== false));
+  e.append(...kids.flat(Infinity).filter((x) => x != null && x !== false));
   return e;
 }
 const chip = (estatus) => el('span', { class: 'chip', style: 'background:' + (ESTC[estatus] || '#7D756B') }, estatus);

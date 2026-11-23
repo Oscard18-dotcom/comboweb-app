@@ -134,6 +134,7 @@ const cambiar = (w, el, valor) => { el.value = valor; el.dispatchEvent(new w.Eve
     await sleep(300);
     const w3 = (await abrir(`${B}/?checkout=${ck.checkout_id}`, { t: token, u: usr })).window;
     t('al volver de la pasarela se muestra el comprobante', await until(() => /Comprobante EC-\d{4}/.test(w3.document.querySelector('#msg').textContent)));
+    t('el comprobante con referencias no muestra objetos sin renderizar', !/\[object /.test(w3.document.querySelector('#msg').textContent) && /Referencias:/.test(w3.document.querySelector('#msg').textContent));
     t('la dedicatoria se muestra como TEXTO (no se ejecuta)', w3.document.querySelector('#msg').textContent.includes('<img src=x') && !w3.document.querySelector('#msg img') && !w3.__pwned);
     w3.document.querySelector('#nav button[data-tab=mis]').click();
     t('"Mis pedidos" lista el pedido con estatus Pendiente', await until(() => /EC-\d{4}/.test(w3.document.querySelector('#mis').textContent) && /Pendiente/.test(w3.document.querySelector('#mis').textContent)));
